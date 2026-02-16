@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+
+# Logs
+*.log
+logs/
+
+# User Data
+data/
+config.json
+
+# Build artifacts
+*.spec
+build/
+dist/
+*.exe
+
+# Backups & Notes
+*.bak
+zettel.txt
+zettel2.txt
+
+# Test files
+test_*.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Private/Local
+start_launcher.bat
