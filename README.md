@@ -42,7 +42,7 @@ Open source Wizard101 launcher with quick start, multi-instance, auto-login, pla
 
 ## Requirements
 - Windows 10+
-- Python 3.11+
+- Python 3.11 or 3.12 (3.12 recommended)
 - (Optional) wizwalker for auto-login and extensions
 - (Optional) pywin32 for window management (auto-installed)
 
