@@ -3,7 +3,7 @@
 import time
 from typing import Dict, List, Tuple
 
-from crypto import Account
+from security.crypto import Account
 
 
 class PlaytimeTracker:
@@ -83,3 +83,4 @@ class PlaytimeTracker:
             stats_list.sort(key=lambda x: x["name"])
         
         return stats_list
+

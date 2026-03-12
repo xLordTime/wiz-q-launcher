@@ -5,12 +5,12 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 
-APP_NAME = "Wiz Q Launcher"
-APP_VERSION = "0.3.0"
+APP_NAME = "Wiz Quick-Launcher"
+APP_VERSION = "0.3.2"
 
 # Region metadata
 REGION_META = {
-    "de": {"name": "Deutschland", "server": "login-de.eu.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101(DE)"},
+    "de": {"name": "Deutsch", "server": "login-de.eu.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101(DE)"},
     "us": {"name": "USA", "server": "login.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101"},
     "fr": {"name": "France", "server": "login-fr.eu.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101(FR)"},
     "it": {"name": "Italia", "server": "login-it.eu.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101(IT)"},
@@ -111,6 +111,10 @@ DEFAULT_CONFIG = {
     "discord_session_end": True,
     "discord_errors": True,
     
+    # Discord Rich Presence
+    "discord_rich_presence": True,
+    "discord_rpc_client_id": "",
+    "discord_rpc_update_interval": 15,
     # Update Checking
     "check_for_updates": True,
     "update_check_interval": 86400,  # 24 hours in seconds
@@ -173,3 +177,4 @@ def save_config(config_file: Path, config: Dict[str, Any]) -> None:
     """Save configuration to file."""
     with config_file.open("w", encoding="utf-8") as handle:
         json.dump(config, handle, indent=2, sort_keys=True)
+

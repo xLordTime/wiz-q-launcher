@@ -6,10 +6,10 @@ import logging
 
 import PySimpleGUI as sg
 
-from config import APP_NAME, APP_VERSION, REGION_META
-from crypto import Account, account_display
-from playtime_tracker import PlaytimeTracker
-from log_viewer import LogViewer
+from core.config import APP_NAME, APP_VERSION, REGION_META
+from security.crypto import Account, account_display
+from services.playtime_tracker import PlaytimeTracker
+from services.log_viewer import LogViewer
 
 
 def apply_theme(config: dict) -> None:
@@ -241,6 +241,30 @@ def build_settings_tab(config: dict) -> List:
                 default_value=config.get("log_level", "INFO"),
                 key="-LOGLEVEL-",
                 readonly=True,
+            ),
+        ],
+        [sg.Text("Discord Rich Presence", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Checkbox(
+                "Enable Discord Rich Presence",
+                default=config.get("discord_rich_presence", True),
+                key="-DISCORD-RPC-",
+            ),
+        ],
+        [
+            sg.Text("Discord RPC Client ID"),
+            sg.Input(
+                config.get("discord_rpc_client_id", ""),
+                key="-DISCORD-RPC-ID-",
+                size=(28, 1),
+            ),
+        ],
+        [
+            sg.Text("RPC update interval (sec)"),
+            sg.Input(
+                str(config.get("discord_rpc_update_interval", 15)),
+                key="-DISCORD-RPC-INTERVAL-",
+                size=(10, 1),
             ),
         ],
         [
@@ -658,5 +682,6 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
     window.bind('<Control-s>', 'Ctrl+S')   # Save Settings
 
     return window
+
 
 

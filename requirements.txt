@@ -1,7 +1,10 @@
 PySimpleGUI-4-foss==4.60.4.1
 cryptography==42.0.8
-wizwalker==1.9.0
+# EU-compatible wizwalker fork (DE/EU servers)
+wizwalker @ git+https://github.com/Lapridox/wizwalker.git@2cab70d98c41ad53aef1d38e3caf3be208eeea1c
 psutil==5.9.8
 requests==2.31.0
 packaging==23.2
 pywin32>=307
+pypresence>=4.3.0
+

@@ -1,4 +1,4 @@
-﻿# Wiz Q Launcher v0.4.0
+# Wiz Q Launcher v0.4.0
 
 Open source Wizard101 launcher with quick start, multi-instance, auto-login, playtime tracking, multi-window management, and extensible wizwalker integrations.
 
@@ -11,7 +11,7 @@ Open source Wizard101 launcher with quick start, multi-instance, auto-login, pla
 -  **Region Support** - 8 configurable regions (DE, US, FR, IT, GB, PL, ES, GR)
 -  **Account Management** - Add, edit, delete encrypted accounts with master password protection
 
-### Extensions System 🆕
+### Extensions System
 -  **Wizwall** - Multi-window management with borderless windows
   -  **Grid Layouts** - 7 preset layouts (2x1, 2x2, 3x3, 4x3, 4x4, 2x3, 3x2)
   -  **Borderless Windows** - Pixel-perfect rendering without title bars
@@ -43,7 +43,7 @@ Open source Wizard101 launcher with quick start, multi-instance, auto-login, pla
 ## Requirements
 - Windows 10+
 - Python 3.11 or 3.12 (3.12 recommended)
-- (Optional) wizwalker for auto-login and extensions
+- (Optional) EU wizwalker fork for auto-login and extensions (recommended for DE/EU servers)
 - (Optional) pywin32 for window management (auto-installed)
 
 ## Download
@@ -86,10 +86,10 @@ python build.py
 
 ## Quick Start
 
-`ash
+```bash
 # Launch the application
 python main.py
-`
+```
 
 1. Create or unlock your master password on first run
 2. Add accounts in the **Accounts** tab
@@ -98,7 +98,6 @@ python main.py
    - **Quicklaunch** - Start one instance
    - **Start N** - Start multiple plain instances
    - **Start + Auto Login** - Start with automatic login and playtime tracking
-
 ## Documentation
 
 - [Usage Guide](documentation/USAGE.md) - How to use all features
@@ -109,30 +108,37 @@ python main.py
 
 ## Project Structure
 
-`
+```text
 q-launcher/
- main.py                      # Application entry point & event loop
- config.py                    # Configuration system
- crypto.py                    # Account encryption & management
- launcher.py                  # Game launch & session tracking
- ui.py                        # UI components & theme
- logging_utils.py             # Logging setup
- playtime_tracker.py          # Playtime statistics engine
- config.json                  # Runtime configuration (auto-created)
- data/accounts.enc.json       # Encrypted account storage
- logs/launcher.log            # Rotating application logs
- documentation/               # Extended documentation
-     USAGE.md                 # Usage guide
-     CONFIGURATION.md         # Config reference
-     UI_UPDATE.md             # UI & region features
-     REFACTORING.md           # Code structure
-`
-
+  main.py                      # Root run entry point
+  build.py                     # Root build entry point
+  app/                         # App runtime modules
+    main.py                    # Event loop and app controller
+    ui.py                      # UI components and theme
+  core/                        # Core config and logging
+    config.py
+    logging_utils.py
+  security/                    # Encryption and account management
+    crypto.py
+  services/                    # Launching, tracking, utilities
+    launcher.py
+    playtime_tracker.py
+    performance_monitor.py
+    log_viewer.py
+    update_checker.py
+    issue_reporter.py
+    window_manager.py
+  integrations/                # External integrations
+    discord_integration.py
+  scripts/                     # Build/maintenance scripts
+    build.py
+  documentation/               # Extended documentation
+```
 ## Configuration
 
 The launcher creates config.json automatically. Common settings:
 
-`json
+```json
 {
   "current_region": "de",
   "show_region_de": true,
@@ -145,7 +151,7 @@ The launcher creates config.json automatically. Common settings:
   "foreground_on_login": true,
   "log_level": "INFO"
 }
-`
+```
 
 See [Configuration Guide](documentation/CONFIGURATION.md) for all options.
 
@@ -157,7 +163,7 @@ See [Configuration Guide](documentation/CONFIGURATION.md) for all options.
 3. Wizard101 launches with current region settings
 
 ### Multi-Instance Launch with Wizwall
-1. Go to **Extensions** → **Wizwall** tab
+1. Go to **Extensions** -> **Wizwall** tab
 2. Select accounts from the list (shows live counter)
 3. Choose grid layout (2x2, 3x3, etc.)
 4. Enable "Auto Set Resolution" for pixel-perfect windows
@@ -188,7 +194,7 @@ See [Configuration Guide](documentation/CONFIGURATION.md) for all options.
 ## Troubleshooting
 
 **Auto-login not working?**
-- Install wizwalker: pip install wizwalker
+- Install EU fork: pip install git+https://github.com/Lapridox/wizwalker.git@2cab70d98c41ad53aef1d38e3caf3be208eeea1c
 - Check logs in **Logs** tab for error messages
 
 **Playtime not tracking?**
@@ -210,3 +216,7 @@ MIT License - See LICENSE file for details
 - **v0.3.0** (2026-02-15) - Multi-window manager, grid layouts
 - **v0.2.0** (2026-02-14) - Playtime tracking, region management, stats
 - **v0.1.0** (2026-02-13) - Initial release with quicklaunch and auto-login
+
+
+
+

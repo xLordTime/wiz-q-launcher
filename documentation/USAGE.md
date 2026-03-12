@@ -1,4 +1,4 @@
-﻿# Usage Guide
+# Usage Guide
 
 ##  Quick Start
 
@@ -97,7 +97,7 @@ Button: Start N
 2. Check/uncheck region visibility (8 options):
    - Deutschland (DE)  enabled by default
    - United States (US)  enabled by default
-   - France (FR), Italia (IT), United Kingdom (GB), Polska (PL), España (ES), Ελλάδα (GR) - disabled by default
+   - France (FR), Italia (IT), United Kingdom (GB), Polska (PL), Espa�a (ES), ????da (GR) - disabled by default
 3. Click **Save Settings**
 4. Tabs appear/disappear immediately (no restart!)
 
@@ -245,7 +245,7 @@ Button: Start N
 ##  Troubleshooting
 
 ### **Auto-login not working**
-1. Ensure \wizwalker\ is installed: \pip install wizwalker\
+1. Ensure \wizwalker\ is installed: \pip install git+https://github.com/Lapridox/wizwalker.git@2cab70d98c41ad53aef1d38e3caf3be208eeea1c\
 2. Check logs in **Logs** tab
 3. Verify credentials correct in **Accounts** tab
 4. Try **Quicklaunch** first to verify game runs
@@ -296,3 +296,5 @@ Currently, stats reset all at once. Individual reset coming in future version.
 
 **What if the launcher crashes?**
 Your account data and config are saved to disk. Launcher will recover them on restart.
+
+

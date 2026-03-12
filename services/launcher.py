@@ -27,9 +27,9 @@ try:
 except Exception:
     WIZWALKER_AVAILABLE = False
 
-from config import REGISTRY_KEY
-from crypto import Account
-from playtime_tracker import PlaytimeTracker
+from core.config import REGISTRY_KEY
+from security.crypto import Account
+from services.playtime_tracker import PlaytimeTracker
 
 
 def get_wiz_install(config: dict) -> Path:
@@ -176,10 +176,15 @@ def launch_with_login(accounts: List[Account], count: int, config: dict) -> None
     thread.start()
 
 
+
 def track_session_start(tracker: PlaytimeTracker, handle: int, username: str) -> None:
     """Start tracking a playtime session."""
     tracker.start_session(handle, username)
-    logging.getLogger("launcher").debug(f"Started tracking session for {username} (handle {handle})")
+    logging.getLogger("launcher").info(
+        "Playtime session started: username=%s handle=%s",
+        username,
+        handle,
+    )
 
 
 def track_session_end(
@@ -187,6 +192,7 @@ def track_session_end(
     handle: int,
     account: Account,
     accounts: List[Account],
+    reason: str = "process_exit",
 ) -> Optional[float]:
     """End tracking and update account playtime."""
     duration = tracker.end_session(handle)
@@ -198,7 +204,12 @@ def track_session_end(
                 accounts[i] = account
                 break
         logging.getLogger("launcher").info(
-            f"Session ended for {account.name}: {tracker.format_playtime(duration)}"
+            "Playtime session ended (%s): account=%s username=%s handle=%s duration=%s",
+            reason,
+            account.name,
+            account.username,
+            handle,
+            tracker.format_playtime(duration),
         )
         return duration
     return None

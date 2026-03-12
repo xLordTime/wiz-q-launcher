@@ -13,7 +13,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from config import APP_NAME
+from core.config import APP_NAME
 
 
 @dataclass
@@ -144,7 +144,7 @@ def account_display(account: Account) -> str:
 
 def add_edit_account(account: Optional[Account] = None, current_region: str = "de") -> Optional[Account]:
     """Dialog to add or edit an account."""
-    from config import REGION_META
+    from core.config import REGION_META
     
     # Build region options
     region_options = []
@@ -219,3 +219,4 @@ def add_edit_account(account: Optional[Account] = None, current_region: str = "d
                 )
             else:
                 return Account(name=name, username=username, password=password, region=region_code)
+
