@@ -1,5 +1,6 @@
 """Playtime tracking and statistics module."""
 
+import threading
 import time
 from typing import Dict, List, Tuple
 
@@ -11,27 +12,29 @@ class PlaytimeTracker:
 
     def __init__(self):
         """Initialize tracker."""
+        self._lock = threading.Lock()
         self.active_sessions: Dict[int, Tuple[float, str]] = {}  # {handle: (start_time, username)}
 
     def start_session(self, handle: int, username: str) -> None:
         """Start tracking a new playtime session."""
-        self.active_sessions[handle] = (time.time(), username)
+        with self._lock:
+            self.active_sessions[handle] = (time.time(), username)
 
     def end_session(self, handle: int) -> float:
         """End a playtime session and return duration in seconds."""
-        if handle not in self.active_sessions:
-            return 0.0
-        
-        start_time, _ = self.active_sessions.pop(handle)
+        with self._lock:
+            if handle not in self.active_sessions:
+                return 0.0
+            start_time, _ = self.active_sessions.pop(handle)
         duration = time.time() - start_time
         return max(0.0, duration)
 
     def get_session_duration(self, handle: int) -> float:
         """Get current session duration without ending it."""
-        if handle not in self.active_sessions:
-            return 0.0
-        
-        start_time, _ = self.active_sessions[handle]
+        with self._lock:
+            if handle not in self.active_sessions:
+                return 0.0
+            start_time, _ = self.active_sessions[handle]
         return time.time() - start_time
 
     def update_account_playtime(

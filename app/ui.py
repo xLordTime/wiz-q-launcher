@@ -11,52 +11,142 @@ from security.crypto import Account, account_display
 from services.playtime_tracker import PlaytimeTracker
 from services.log_viewer import LogViewer
 
+_WIZWALL_LAYOUTS = ["1x1", "2x1", "1x2", "2x2", "3x2", "3x3", "4x2", "4x3"]
+
+# All selectable UI themes (displayed in Settings → UI Theme combo).
+_AVAILABLE_THEMES = [
+    "WizDark",      # Deep charcoal · teal accent  (default)
+    "WizLight",     # Clean white · blue accent
+    "Midnight",     # Navy · electric-blue accent
+    "Nord",         # Slate-blue · muted-blue accent
+    "Dracula",      # Deep purple-gray · lavender accent
+    "Catppuccin",   # Dark mauve · pastel-blue accent
+    "Monokai",      # Warm dark · vibrant-green accent
+    "Emerald",      # Forest dark · bright-green accent
+    "Slate",        # Dark indigo · violet accent
+    "Sunset",       # Dark maroon · warm-red accent
+]
+
+# Flat PyQt6-style theme definitions shared across all themes.
+# BORDER=0 + SLIDER_DEPTH=0 + PROGRESS_DEPTH=0 remove all tkinter 3-D effects.
+_THEME_DEFS: dict = {
+    "WizDark": {
+        "BACKGROUND": "#0D1117",
+        "TEXT": "#E6EDF3",
+        "INPUT": "#161B22",
+        "TEXT_INPUT": "#E6EDF3",
+        "SCROLL": "#30363D",
+        "BUTTON": ("#FFFFFF", "#238636"),   # GitHub green
+        "PROGRESS": ("#238636", "#0D1117"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "WizLight": {
+        "BACKGROUND": "#FFFFFF",
+        "TEXT": "#24292F",
+        "INPUT": "#F6F8FA",
+        "TEXT_INPUT": "#24292F",
+        "SCROLL": "#D0D7DE",
+        "BUTTON": ("#FFFFFF", "#0969DA"),   # GitHub blue
+        "PROGRESS": ("#0969DA", "#F6F8FA"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Midnight": {
+        "BACKGROUND": "#0A0E1A",
+        "TEXT": "#A9B1D6",
+        "INPUT": "#13182A",
+        "TEXT_INPUT": "#C0CAF5",
+        "SCROLL": "#24283B",
+        "BUTTON": ("#1A1B26", "#7AA2F7"),   # Tokyo Night blue
+        "PROGRESS": ("#7AA2F7", "#0A0E1A"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Nord": {
+        "BACKGROUND": "#2E3440",
+        "TEXT": "#ECEFF4",
+        "INPUT": "#3B4252",
+        "TEXT_INPUT": "#ECEFF4",
+        "SCROLL": "#434C5E",
+        "BUTTON": ("#ECEFF4", "#5E81AC"),   # Nord blue
+        "PROGRESS": ("#88C0D0", "#2E3440"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Dracula": {
+        "BACKGROUND": "#282A36",
+        "TEXT": "#F8F8F2",
+        "INPUT": "#44475A",
+        "TEXT_INPUT": "#F8F8F2",
+        "SCROLL": "#6272A4",
+        "BUTTON": ("#F8F8F2", "#BD93F9"),   # Dracula purple
+        "PROGRESS": ("#BD93F9", "#282A36"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Catppuccin": {
+        "BACKGROUND": "#1E1E2E",
+        "TEXT": "#CDD6F4",
+        "INPUT": "#313244",
+        "TEXT_INPUT": "#CDD6F4",
+        "SCROLL": "#45475A",
+        "BUTTON": ("#1E1E2E", "#89B4FA"),   # Catppuccin blue
+        "PROGRESS": ("#89B4FA", "#1E1E2E"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Monokai": {
+        "BACKGROUND": "#272822",
+        "TEXT": "#F8F8F2",
+        "INPUT": "#3E3D32",
+        "TEXT_INPUT": "#F8F8F2",
+        "SCROLL": "#49483E",
+        "BUTTON": ("#272822", "#A6E22E"),   # Monokai green
+        "PROGRESS": ("#A6E22E", "#272822"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Emerald": {
+        "BACKGROUND": "#0D1A13",
+        "TEXT": "#B6F5C8",
+        "INPUT": "#152A1E",
+        "TEXT_INPUT": "#B6F5C8",
+        "SCROLL": "#1E3A28",
+        "BUTTON": ("#0D1A13", "#27AE60"),   # Forest green
+        "PROGRESS": ("#27AE60", "#0D1A13"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Slate": {
+        "BACKGROUND": "#1A1A2E",
+        "TEXT": "#E0E0FF",
+        "INPUT": "#16213E",
+        "TEXT_INPUT": "#E0E0FF",
+        "SCROLL": "#0F3460",
+        "BUTTON": ("#E0E0FF", "#533483"),   # Deep violet
+        "PROGRESS": ("#533483", "#1A1A2E"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Sunset": {
+        "BACKGROUND": "#1A0A0A",
+        "TEXT": "#F5D0C0",
+        "INPUT": "#2A1010",
+        "TEXT_INPUT": "#F5D0C0",
+        "SCROLL": "#3A1818",
+        "BUTTON": ("#F5D0C0", "#C0392B"),   # Warm red
+        "PROGRESS": ("#C0392B", "#1A0A0A"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+}
+
 
 def apply_theme(config: dict) -> None:
     """
-    Apply custom theme based on configuration.
-    Supports automatic WizDark (dark) theme.
-    
-    Args:
-        config: Configuration dictionary with 'ui_theme' key
+    Register all custom themes and apply the one selected in *config*.
+
+    All themes use BORDER=0 / SLIDER_DEPTH=0 for a flat, PyQt6-style look.
+    Falls back to WizDark when an unknown theme name is stored in config.
     """
-    # Define WizDark (dark) theme
-    sg.theme_add_new(
-        "WizDark",
-        {
-            "BACKGROUND": "#101415",      # Very dark gray (almost black)
-            "TEXT": "#E6E6E6",            # Light gray text
-            "INPUT": "#1A1F20",           # Dark input boxes
-            "TEXT_INPUT": "#E6E6E6",      # Light text in inputs
-            "SCROLL": "#3A3F41",          # Darker scroll bars
-            "BUTTON": ("#E6E6E6", "#2C6E73"),  # Teal buttons
-            "PROGRESS": ("#2C6E73", "#101415"), # Progress bar
-            "BORDER": 1,
-            "SLIDER_DEPTH": 0,
-            "PROGRESS_DEPTH": 0,
-        },
-    )
-    
-    # Define Light theme as alternative
-    sg.theme_add_new(
-        "WizLight",
-        {
-            "BACKGROUND": "#F5F5F5",      # Light gray background
-            "TEXT": "#000000",            # Black text
-            "INPUT": "#FFFFFF",           # White input boxes
-            "TEXT_INPUT": "#000000",      # Black text in inputs
-            "SCROLL": "#CCCCCC",          # Light scroll bars
-            "BUTTON": ("#000000", "#87CEEB"),  # Light blue buttons
-            "PROGRESS": ("#87CEEB", "#F5F5F5"),
-            "BORDER": 1,
-            "SLIDER_DEPTH": 0,
-            "PROGRESS_DEPTH": 0,
-        },
-    )
-    
-    # Apply selected theme
-    selected_theme = config.get("ui_theme", "WizDark")
-    sg.theme(selected_theme)
+    for name, definition in _THEME_DEFS.items():
+        sg.theme_add_new(name, definition)
+
+    selected = config.get("ui_theme", "WizDark")
+    if selected not in _THEME_DEFS:
+        selected = "WizDark"
+    sg.theme(selected)
 
 
 def resolve_icon_path(config: dict) -> Optional[str]:
@@ -100,7 +190,7 @@ def resolve_icon_path(config: dict) -> Optional[str]:
 
 
 def build_launch_tab(config: dict, account_list: List[str]) -> List:
-    """Build Launch tab layout (window management moved to Extensions tab)."""
+    """Build Launch tab layout."""
     current_region = config.get("current_region", "de")
     region_name = REGION_META.get(current_region, {}).get("name", current_region.upper())
     
@@ -209,7 +299,9 @@ def build_accounts_tab(account_list: List[str]) -> List:
                 enable_events=True,
             )
         ],
-        [sg.Button("Add"), sg.Button("Edit"), sg.Button("Delete")],
+        [sg.Button("Add"), sg.Button("Edit"), sg.Button("Delete"),
+         sg.Button("↑", key="-ACCT-UP-", tooltip="Move selected account up"),
+         sg.Button("↓", key="-ACCT-DOWN-", tooltip="Move selected account down")],
     ]
 
 
@@ -268,15 +360,109 @@ def build_settings_tab(config: dict) -> List:
             ),
         ],
         [
+            sg.Checkbox(
+                "Yield presence to game (let Discord show 'Playing Wizard101' while game is running)",
+                default=config.get("discord_rpc_yield_to_game", True),
+                key="-DISCORD-RPC-YIELD-",
+            ),
+        ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Discord Webhook Notifications", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Text("Webhook URL"),
+            sg.Input(
+                config.get("discord_webhook_url", ""),
+                key="-DISCORD-WEBHOOK-URL-",
+                size=(44, 1),
+                password_char="",
+                tooltip="Paste your Discord webhook URL here",
+            ),
+        ],
+        [
+            sg.Checkbox(
+                "Enable webhook notifications",
+                default=config.get("discord_notifications", False),
+                key="-DISCORD-NOTIFY-",
+            ),
+            sg.Button("Test", key="-DISCORD-WEBHOOK-TEST-", size=(6, 1),
+                      tooltip="Send a test message to the webhook URL above"),
+        ],
+        [
+            sg.Checkbox(
+                "Session start",
+                default=config.get("discord_session_start", True),
+                key="-DISCORD-NOTIFY-START-",
+            ),
+            sg.Checkbox(
+                "Session end",
+                default=config.get("discord_session_end", True),
+                key="-DISCORD-NOTIFY-END-",
+            ),
+            sg.Checkbox(
+                "Errors",
+                default=config.get("discord_errors", False),
+                key="-DISCORD-NOTIFY-ERRORS-",
+            ),
+        ],
+        [sg.HorizontalSeparator()],
+        [
             sg.Text("UI Theme"),
             sg.Combo(
-                ["WizDark", "WizLight"],
+                _AVAILABLE_THEMES,
                 default_value=config.get("ui_theme", "WizDark"),
                 key="-THEME-",
                 readonly=True,
                 enable_events=True,
+                size=(16, 1),
+                tooltip="Theme applies immediately",
             ),
         ],
+        [
+            sg.Checkbox(
+                "Remember window position",
+                default=config.get("save_window_state", False),
+                key="-SAVE-WINDOW-STATE-",
+            ),
+        ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Update Checker", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Button("Check for Updates", key="-CHECK-UPDATES-"),
+            sg.Button("Open Download Page", key="-OPEN-UPDATE-URL-"),
+        ],
+        [
+            sg.Text(
+                "No update check run yet.",
+                key="-UPDATE-STATUS-",
+                size=(70, 2),
+                text_color="#87CEEB",
+            )
+        ],
+        [
+            sg.Checkbox(
+                "Automatically check for updates on startup",
+                default=config.get("check_for_updates", True),
+                key="-CHECK-FOR-UPDATES-",
+            ),
+        ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Issue Reporter", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Text("Title"),
+            sg.Input("", key="-ISSUE-TITLE-", size=(48, 1)),
+        ],
+        [
+            sg.Text("Context"),
+            sg.Multiline(
+                default_text="",
+                key="-ISSUE-CONTEXT-",
+                size=(58, 5),
+            ),
+        ],
+        [
+            sg.Button("Report Problem", key="-REPORT-ISSUE-"),
+        ],
+        [sg.HorizontalSeparator()],
         [sg.Text("Region Visibility", font=("Segoe UI", 11, "bold"))],
         [
             sg.Checkbox(
@@ -322,19 +508,104 @@ def build_settings_tab(config: dict) -> List:
         ],
         [
             sg.Checkbox(
-                "España (ES)",
+                "Espana (ES)",
                 default=config.get("show_region_es", False),
                 key="-SHOW-ES-",
                 enable_events=True
             ),
             sg.Checkbox(
-                "Ελλάδα (GR)",
+                "Ellada (GR)",
                 default=config.get("show_region_gr", False),
                 key="-SHOW-GR-",
                 enable_events=True
             ),
         ],
         [sg.Button("Save settings")],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Playtime Tracking", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Checkbox(
+                "Track playtime automatically",
+                default=config.get("auto_playtime_tracking", True),
+                key="-AUTO-PLAYTIME-",
+            ),
+            sg.Checkbox(
+                "Track even without auto-login",
+                default=config.get("track_without_autologin", False),
+                key="-TRACK-WITHOUT-LOGIN-",
+            ),
+        ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Launch Options", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Text("Extra launch arguments",
+                    tooltip="Added to the Wizard101 executable command line, e.g. -nosound"),
+            sg.Input(
+                " ".join(str(a) for a in config.get("extra_args", [])),
+                key="-EXTRA-ARGS-",
+                size=(36, 1),
+                tooltip="Space-separated, e.g. -nosound -window",
+            ),
+        ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Security", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Button(
+                "Change Master Password",
+                key="-CHANGE-PASSWORD-",
+                button_color=("white", "#8B0000"),
+            )
+        ],
+    ]
+
+
+def build_performance_tab(enable_perf: bool = True) -> List:
+    """Build Performance tab with live system metrics."""
+    return [
+        [sg.Text("Performance Monitor", font=("Segoe UI", 12, "bold"))],
+        [
+            sg.Checkbox(
+                "Enable Performance Monitoring",
+                default=enable_perf,
+                key="-ENABLE-PERF-MONITOR-",
+                enable_events=True,
+                tooltip="Toggle live CPU/RAM/Wizard memory polling on or off",
+            )
+        ],
+        [sg.Text("Live metrics refresh automatically while app is running.", font=("Segoe UI", 9, "italic"))],
+        [sg.HorizontalSeparator()],
+        [sg.HorizontalSeparator()],
+        [
+            sg.Text("CPU Usage:"),
+            sg.Text("0.0%", key="-PERF-CPU-", size=(10, 1), text_color="#E6E6E6"),
+            sg.Text("RAM Usage:"),
+            sg.Text("0.0%", key="-PERF-RAM-", size=(10, 1), text_color="#E6E6E6"),
+            sg.Text("Wizard Memory:"),
+            sg.Text("0.0 MB", key="-PERF-WIZMEM-", size=(12, 1), text_color="#E6E6E6"),
+        ],
+        [
+            sg.Text("Avg CPU (last 10):"),
+            sg.Text("0.0%", key="-PERF-AVG-CPU-", size=(10, 1), text_color="#87CEEB"),
+            sg.Text("Peak CPU:"),
+            sg.Text("0.0%", key="-PERF-PEAK-CPU-", size=(10, 1), text_color="#87CEEB"),
+            sg.Text("Peak Wizard Mem:"),
+            sg.Text("0.0 MB", key="-PERF-PEAK-WIZMEM-", size=(12, 1), text_color="#87CEEB"),
+        ],
+        [
+            sg.Button("Refresh Metrics", key="-PERF-REFRESH-"),
+            sg.Button("Clear History", key="-PERF-CLEAR-HISTORY-"),
+        ],
+        [
+            sg.Multiline(
+                default_text="No snapshots yet.",
+                key="-PERF-HISTORY-",
+                size=(75, 14),
+                disabled=True,
+                background_color="#1A1F20",
+                text_color="#E6E6E6",
+                font=("Courier", 9),
+            )
+        ],
     ]
 
 
@@ -426,144 +697,108 @@ def build_logs_tab(log_viewer: Optional[LogViewer] = None) -> List:
         ]
 
 
+def build_wizwall_tab(config: dict) -> List:
+    """
+    Build the Wizwall sub-tab layout.
 
-def build_wizwall_subtab(config: dict) -> List:
+    Uses wizwalker.utils.get_all_wizard_handles() for window discovery — no
+    game hooks are activated.  Layout / padding / borderless settings are
+    persisted in *config*.
     """
-    Build Wizwall sub-tab for multi-window management.
-    
-    Args:
-        config: Configuration dictionary
-        
-    Returns:
-        List layout for wizwall sub-tab
-    """
-    wizwall_enabled = config.get("wizwall_enabled", True)
-    default_layout = config.get("wizwall_default_layout", "2x2")
-    auto_set_resolution = config.get("wizwall_auto_set_resolution", True)
-    
+    default_layout    = config.get("wizwall_layout", "2x2")
+    default_padding   = config.get("wizwall_padding", 4)
+    default_borderless = config.get("wizwall_borderless", True)
+
     return [
-        [sg.Text("Wizwalker Multi-Window Management", font=("Segoe UI", 11, "bold"))],
-        [
-            sg.Checkbox(
-                "Enable Wizwall Extension",
-                default=wizwall_enabled,
-                key="-WIZWALL-ENABLED-",
-                enable_events=True,
-            )
-        ],
+        [sg.Text("Wizwall — Window Tiling", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(
+            "Arranges running Wizard101 windows in a grid on your primary monitor.\n"
+            "Window discovery uses wizwalker.utils — no game hooks are activated.",
+            font=("Segoe UI", 8, "italic"),
+            text_color="#AAAAAA",
+        )],
         [sg.HorizontalSeparator()],
-        
-        # Grid Layout Configuration
-        [sg.Text("Grid Layout Configuration", font=("Segoe UI", 10, "bold"))],
+
+        # ── Layout settings ──────────────────────────────────────────────────
         [
-            sg.Text("Default Layout:"),
+            sg.Text("Grid Layout:", size=(12, 1)),
             sg.Combo(
-                ["1x1", "2x1", "1x2", "2x2", "3x2", "3x3", "4x2", "4x3"],
+                _WIZWALL_LAYOUTS,
                 default_value=default_layout,
-                key="-WIZWALL-LAYOUT-",
+                key="-WW-LAYOUT-",
                 readonly=True,
-                size=(10, 1),
-                disabled=not wizwall_enabled,
+                size=(8, 1),
+                enable_events=True,
             ),
-            sg.Text("(Columns x Rows)")
-        ],
-        [
+            sg.Text("  Padding (px):", size=(12, 1)),
+            sg.Input(str(default_padding), key="-WW-PADDING-", size=(5, 1)),
             sg.Checkbox(
-                "Auto-set game resolution for layout",
-                default=auto_set_resolution,
-                key="-WIZWALL-AUTO-RESOLUTION-",
-                tooltip="Automatically configure preferences.xml before starting clients",
-                disabled=not wizwall_enabled,
-            )
+                "Borderless",
+                default=default_borderless,
+                key="-WW-BORDERLESS-",
+                tooltip="Remove title-bar and borders for seamless tiling",
+            ),
         ],
-        
-        # Resolution Info
-        [sg.Text("Optimal Resolutions (for 1920x1080)", font=("Segoe UI", 9, "italic"))],
-        [
-            sg.Text(
-                "2x1: 952x1070 | 2x2: 952x532 | 3x2: 633x532 | 3x3: 633x353",
-                font=("Courier", 8),
-                text_color="#888888"
-            )
-        ],
-        
+
         [sg.HorizontalSeparator()],
-        
-        # Window Management Actions
-        [sg.Text("Window Management", font=("Segoe UI", 10, "bold"))],
+
+        # ── Action buttons ───────────────────────────────────────────────────
         [
-            sg.Button("📐 Arrange Windows", key="-ARRANGE-WINDOWS-", disabled=not wizwall_enabled),
-            sg.Button("🔄 Refresh Window List", key="-REFRESH-WINDOWS-", disabled=not wizwall_enabled),
+            sg.Button("Scan Windows",    key="-WW-SCAN-",    size=(14, 1)),
+            sg.Button("Arrange Grid",    key="-WW-ARRANGE-", size=(14, 1), button_color=("white", "#1A6B2E")),
+            sg.Button("Save Positions",  key="-WW-SAVE-",    size=(14, 1)),
+            sg.Button("Restore",         key="-WW-RESTORE-", size=(14, 1)),
         ],
-        [
-            sg.Button("💾 Save Current Layout", key="-SAVE-LAYOUT-", disabled=not wizwall_enabled),
-            sg.Button("📂 Restore Saved Layout", key="-RESTORE-LAYOUT-", disabled=not wizwall_enabled),
-        ],
-        [
-            sg.Button("🎯 Set Resolution for Layout", key="-SET-RESOLUTION-", disabled=not wizwall_enabled),
-            sg.Text("(Apply before starting clients)", font=("Segoe UI", 8, "italic"))
-        ],
-        
+
         [sg.HorizontalSeparator()],
-        
-        # Active Windows List
-        [sg.Text("Active Wizard101 Windows", font=("Segoe UI", 10, "bold"))],
+
+        # ── Window list ──────────────────────────────────────────────────────
+        [sg.Text("Active Wizard101 Windows", font=("Segoe UI", 9, "bold"))],
         [
             sg.Multiline(
-                size=(70, 8),
-                key="-WIZWALL-WINDOWS-",
+                "",
+                key="-WW-WINDOWS-",
+                size=(70, 6),
                 disabled=True,
                 background_color="#1A1F20",
                 text_color="#E6E6E6",
-                font=("Courier", 9),
+                font=("Courier New", 9),
+                no_scrollbar=False,
             )
         ],
-        
+
+        # ── Output log ───────────────────────────────────────────────────────
+        [sg.Text("Output", font=("Segoe UI", 9, "bold"))],
+        [
+            sg.Multiline(
+                "",
+                key="-WW-OUTPUT-",
+                size=(70, 5),
+                disabled=True,
+                background_color="#111518",
+                text_color="#B8FFB8",
+                font=("Courier New", 9),
+                no_scrollbar=False,
+            )
+        ],
+
         [sg.HorizontalSeparator()],
-        
-        # Status and Tips
-        [sg.Text("💡 Tips:", font=("Segoe UI", 9, "bold"))],
-        [sg.Text("• Set resolution BEFORE starting clients for pixel-perfect mouse coordination", font=("Segoe UI", 8))],
-        [sg.Text("• Use 'Arrange Windows' after all clients are on login screen", font=("Segoe UI", 8))],
-        [sg.Text("• Borderless windows are created automatically for seamless tiling", font=("Segoe UI", 8))],
+        [sg.Text(
+            "Tip: click 'Scan' first, then 'Arrange Grid'.  "
+            "'Save Positions' snapshots current geometry; 'Restore' brings windows back.",
+            font=("Segoe UI", 8, "italic"),
+            text_color="#888888",
+        )],
     ]
 
 
 def build_extensions_tab(config: dict) -> List:
-    """
-    Build Extensions tab with sub-tabs for different extensions.
-    
-    Currently includes:
-    - Wizwall: Multi-window grid layout management
-    
-    Args:
-        config: Configuration dictionary
-        
-    Returns:
-        List layout for extensions tab with sub-tabs
-    """
-    extensions_enabled = config.get("enable_extensions", True)
-    
-    # Build extension sub-tabs
-    extension_subtabs = [
-        sg.Tab("Wizwall", build_wizwall_subtab(config), key="-TAB-WIZWALL-"),
-        # Future extensions can be added here:
-        # sg.Tab("Combat Helper", build_combat_helper_subtab(config), key="-TAB-COMBAT-"),
-        # sg.Tab("Quest Tracker", build_quest_tracker_subtab(config), key="-TAB-QUEST-"),
-    ]
-    
-    if not extensions_enabled:
-        return [
-            [sg.Text("Extensions Disabled", font=("Segoe UI", 11, "bold"))],
-            [sg.Text("Extensions are currently disabled.")],
-            [sg.Text("Enable them in the configuration to access advanced features.")],
-        ]
-    
+    """Build Extensions tab containing the Wizwall sub-tab."""
     return [
         [
             sg.TabGroup(
-                [extension_subtabs],
-                key="-EXTENSIONS-TABGROUP-"
+                [[sg.Tab("Wizwall", build_wizwall_tab(config), key="-TAB-WIZWALL-")]],
+                key="-EXTENSIONS-TABGROUP-",
             )
         ]
     ]
@@ -598,8 +833,20 @@ def build_stats_tab(stats_list: List[dict]) -> List:
         [
             sg.Button("Refresh"),
             sg.Button("Export Stats"),
+            sg.Button("Reset Selected", key="-RESET-SELECTED-STATS-", tooltip="Reset playtime for the selected account"),
             sg.Button("Reset All Stats"),
         ],
+    ]
+
+
+def build_tools_tab() -> List:
+    """Build Tools tab placeholder for future tools."""
+    return [
+        [sg.Text("Tools", font=("Segoe UI", 12, "bold"))],
+        [sg.HorizontalSeparator()],
+        [sg.Text("No tools configured right now.", font=("Segoe UI", 11, "bold"), text_color="#2C6E73")],
+        [sg.Text("The previous Damage Calculator has been removed." )],
+        [sg.Text("We can build the new tool here next.", font=("Segoe UI", 9, "italic"))],
     ]
 
 
@@ -647,7 +894,22 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
     layout = [
         # Title bar with app name, version, and active region
         [sg.Text(f"{APP_NAME} {APP_VERSION} | 🎮 Active: {region_name.upper()}", font=("Segoe UI", 14, "bold"))],
-        
+
+        # Update banner — hidden initially, shown when an update is found
+        [
+            sg.Text(
+                "",
+                key="-UPDATE-BANNER-",
+                text_color="#000000",
+                background_color="#FFD700",
+                font=("Segoe UI", 10, "bold"),
+                size=(80, 1),
+                justification="center",
+                visible=False,
+                enable_events=True,
+            ),
+        ],
+
         # Main tab group
         [
             sg.TabGroup(
@@ -657,6 +919,8 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
                         sg.Tab("Accounts", build_accounts_tab(account_list), key="-TAB-ACCOUNTS-"),
                         sg.Tab("Extensions", build_extensions_tab(config), key="-TAB-EXTENSIONS-"),
                         sg.Tab("Regions", build_regions_tab(config), key="-TAB-REGIONS-"),
+                        sg.Tab("Tools", build_tools_tab(), key="-TAB-TOOLS-"),
+                        sg.Tab("Performance", build_performance_tab(config.get("enable_performance_monitor", True)), key="-TAB-PERFORMANCE-"),
                         sg.Tab("Stats", build_stats_tab(stats_list), key="-TAB-STATS-"),
                         sg.Tab("Settings", build_settings_tab(config), key="-TAB-SETTINGS-"),
                         sg.Tab("Logs", build_logs_tab(log_viewer), key="-TAB-LOGS-"),
@@ -670,7 +934,13 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
     ]
 
     icon_path = resolve_icon_path(config)
-    window = sg.Window(APP_NAME, layout, finalize=True, icon=icon_path)
+    _win_kwargs: dict = {"finalize": True, "icon": icon_path}
+    if config.get("save_window_state", False):
+        wx = config.get("window_x")
+        wy = config.get("window_y")
+        if wx is not None and wy is not None:
+            _win_kwargs["location"] = (int(wx), int(wy))
+    window = sg.Window(APP_NAME, layout, **_win_kwargs)
     
     # ================== KEYBOARD SHORTCUTS ==================
     # Bind keyboard shortcuts to the window

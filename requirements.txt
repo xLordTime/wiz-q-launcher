@@ -1,10 +1,15 @@
 PySimpleGUI-4-foss==4.60.4.1
 cryptography==42.0.8
-# EU-compatible wizwalker fork (DE/EU servers)
-wizwalker @ git+https://github.com/Lapridox/wizwalker.git@2cab70d98c41ad53aef1d38e3caf3be208eeea1c
+# wizwalker — Wizard101 scripting library (Deimos fork, development branch)
+# Used for window discovery only (no game hooks).
+# Update the URL/branch here when upgrading wizwalker.
+wizwalker @ git+https://github.com/Deimos-Wizard101/wizwalker@development
 psutil==5.9.8
 requests==2.31.0
 packaging==23.2
 pywin32>=307
 pypresence>=4.3.0
+# System-tray icon (optional — F4 falls back to minimize when not installed)
+pystray>=0.19.0
+Pillow>=10.0.0
 

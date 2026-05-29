@@ -1,4 +1,4 @@
-# Wiz Q Launcher v0.4.0
+# Wiz Q Launcher v5.2.0
 
 Open source Wizard101 launcher with quick start, multi-instance, auto-login, playtime tracking, multi-window management, and extensible wizwalker integrations.
 
@@ -23,9 +23,26 @@ Open source Wizard101 launcher with quick start, multi-instance, auto-login, pla
 
 ### Playtime Tracking
 -  **Session Tracking** - Automatically track playtime when using auto-login
+-  **External Session Detection** - Optionally auto-track Wizard101 windows started outside the launcher (`track_without_autologin`)
+-  **Live Stats** - Stats tab refreshes every second; active accounts show a 🟢 indicator with live session time
 -  **Statistics** - View total playtime, session count, and average session duration per account
+-  **Reset Selected** - Reset playtime for a single account without affecting others
 -  **Export Stats** - Save playtime statistics to file
--  **Reset Stats** - Clear all playtime data (with confirmation)
+-  **Reset All Stats** - Clear all playtime data (with confirmation)
+
+### Discord Integration
+-  **Rich Presence** - Shows account, region, session time, and 24 h playtime in Discord status
+-  **Yield to Game** - Let Discord auto-detect the game instead of showing launcher status during active sessions
+-  **Webhook Notifications** - Post session-start, session-end, and error notifications to a Discord webhook
+-  **Granular Toggles** - Enable/disable each notification type independently
+-  **Test Button** - Verify webhook URL with one click
+
+### User Interface
+-  **10 Themes** - WizDark, WizLight, Midnight, Nord, Dracula, Catppuccin, Monokai, Emerald, Slate, Sunset (applies immediately)
+-  **System Tray (F4)** - Minimize to a wizard-hat tray icon; restore or exit from right-click menu (requires pystray + Pillow)
+-  **Account Reorder** - Move accounts up/down with ↑/↓ buttons in the Accounts tab
+-  **Window Position Save** - Remembers and restores the window position between sessions
+-  **Performance Monitor** - Live CPU, RAM, and Wizard memory usage with enable/disable toggle
 
 ### Region Management
 -  **Per-Region Configuration** - Custom install paths, servers, and ports per region
@@ -35,16 +52,18 @@ Open source Wizard101 launcher with quick start, multi-instance, auto-login, pla
 
 ### User Interface
 -  **App Icon** - Wizard101 themed icon in window and taskbar
--  **Modern Dark Theme** - WizDark theme with color-coded UI elements
--  **Tabbed Interface** - Launch, Accounts, Settings, Logs, and Stats tabs
--  **Configurable Options** - Window title template, foreground behavior, logging level
+-  **Modern Dark Theme** - WizDark theme with color-coded UI elements (10 themes total)
+-  **Tabbed Interface** - Launch, Accounts, Extensions, Regions, Performance, Stats, Settings, Logs tabs
+-  **Configurable Options** - Window title template, foreground behavior, logging level, extra launch args
 -  **Log Viewer** - Quick access to application logs
+-  **Keyboard Shortcuts** - F1 Quicklaunch, F2 Multi-launch, F3 Auto-login, F4 Tray, Ctrl+S Save settings
 
 ## Requirements
 - Windows 10+
 - Python 3.11 or 3.12 (3.12 recommended)
 - (Optional) EU wizwalker fork for auto-login and extensions (recommended for DE/EU servers)
 - (Optional) pywin32 for window management (auto-installed)
+- (Optional) pystray + Pillow for system tray icon (`pip install pystray Pillow`)
 
 ## Download
 
@@ -124,12 +143,14 @@ q-launcher/
     launcher.py
     playtime_tracker.py
     performance_monitor.py
+    tray_icon.py
     log_viewer.py
     update_checker.py
     issue_reporter.py
-    window_manager.py
+    wizwall.py
   integrations/                # External integrations
-    discord_integration.py
+    discord_integration.py     # Webhook notifications
+    discord_presence.py        # Rich Presence
   scripts/                     # Build/maintenance scripts
     build.py
   documentation/               # Extended documentation
@@ -198,7 +219,8 @@ See [Configuration Guide](documentation/CONFIGURATION.md) for all options.
 - Check logs in **Logs** tab for error messages
 
 **Playtime not tracking?**
-- Only tracks with **Start + Auto Login**
+- Only tracks with **Start + Auto Login** by default
+- Enable `track_without_autologin` in Settings > Playtime Tracking to also track externally started instances
 - Ensure instances launched through the launcher
 - Close instances normally (don't force-close)
 
@@ -212,6 +234,8 @@ MIT License - See LICENSE file for details
 
 ## Version History
 
+- **v5.2.0** (2026-05-29) - Discord integration, system tray, 10 themes, playtime overhaul, UI improvements
+- **v5.1.0** (2026-03-15) - Version alignment and release numbering cleanup
 - **v0.4.0** (2026-02-16) - Extensions system, Wizwall, borderless windows, region-specific accounts, .exe builds
 - **v0.3.0** (2026-02-15) - Multi-window manager, grid layouts
 - **v0.2.0** (2026-02-14) - Playtime tracking, region management, stats

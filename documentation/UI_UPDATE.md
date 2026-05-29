@@ -1,4 +1,4 @@
-## ✅ UI Updated with Full Region Support (0.2.0)
+## ✅ UI Updated with Full Region Support (5.1.0)
 
 Your Wizard101 Launcher now displays **all region information clearly** with per-region tabs!
 
@@ -37,7 +37,7 @@ Your Wizard101 Launcher now displays **all region information clearly** with per
 - **Save Settings** button - persists all changes
 
 #### **4. Window Title**
-Shows: `Wiz Q Launcher v0.2.0 | 🎮 Active: DEUTSCHLAND`
+Shows: `Wiz Q Launcher v5.1.0 | 🎮 Active: DEUTSCHLAND`
 
 ---
 
@@ -76,7 +76,7 @@ All region settings are **saved per-region** in config.json:
 
 ### **Technical Details**
 
-- ✅ **Version**: 0.2.0 (fixed sync issue)
+- ✅ **Version**: 5.1.0 (fixed sync issue)
 - ✅ **REGION_META**: 8 regions with metadata
 - ✅ **Config Keys**: `region_install_*`, `region_server_*`, `region_port_*`
 - ✅ **Live Reload**: Region visibility toggles rebuild window

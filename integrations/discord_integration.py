@@ -136,10 +136,11 @@ class DiscordIntegration:
                 return False
                 
         except requests.exceptions.RequestException as e:
-            self.logger.warning(f"Discord webhook failed: {e}")
+            # Log only the exception type — the message may contain the webhook URL.
+            self.logger.warning("Discord webhook request failed (%s)", type(e).__name__)
             return False
         except Exception as e:
-            self.logger.error(f"Discord integration error: {e}")
+            self.logger.error("Discord integration error (%s)", type(e).__name__)
             return False
 
     def test_connection(self) -> bool:

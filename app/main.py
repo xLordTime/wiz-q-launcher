@@ -26,10 +26,12 @@ Architecture:
 
 import logging
 import os
+import queue
 import sys
 import time
-import psutil
+import webbrowser
 from pathlib import Path
+from typing import Any, Optional
 
 import PySimpleGUI as sg
 
@@ -43,8 +45,10 @@ from core.config import (
 )
 from security.crypto import (
     Account,
+    MASTER_PASSWORD_RESET,
     account_display,
     add_edit_account,
+    change_master_password,
     load_accounts,
     load_master_password,
     save_accounts,
@@ -66,7 +70,8 @@ from integrations.discord_presence import DiscordRichPresence, RollingActivity24
 from services.log_viewer import LogViewer
 from services.update_checker import UpdateChecker
 from services.issue_reporter import IssueReporter
-from services.window_manager import WindowManager
+import services.wizwall as wizwall
+from services.tray_icon import TrayIcon, TRAY_AVAILABLE
 
 
 def get_paths() -> dict:
@@ -129,18 +134,9 @@ def get_region_accounts(accounts: list, current_region: str) -> list:
     return [acc for acc in accounts if acc.region == current_region]
 
 
-def get_account_by_username(accounts: list, username: str) -> Account:
+def get_account_by_username(accounts: list, username: str) -> Optional[Account]:
     """Find account object by username."""
     return next((acc for acc in accounts if acc.username == username), None)
-
-
-def build_active_account_map(active_sessions: dict, accounts: list) -> dict:
-    """Build handle -> account display mapping for window manager UI."""
-    account_map = {}
-    for handle, username in active_sessions.items():
-        account = get_account_by_username(accounts, username)
-        account_map[handle] = account.name if account else username
-    return account_map
 
 
 def detect_new_handles(
@@ -160,13 +156,12 @@ def detect_new_handles(
     return sorted(set(get_wizard_handles_safe()).difference(before_handles))
 
 
-
 def get_selected_account_for_presence(
     values: dict,
     accounts: list,
     config: dict,
     active_sessions: dict,
-) -> Account:
+) -> Optional[Account]:
     """Resolve the currently selected account for Discord presence session display."""
     current_region = config.get("current_region", "de")
     region_accounts = get_region_accounts(accounts, current_region)
@@ -225,6 +220,8 @@ def sync_discord_presence_config(
     except (TypeError, ValueError):
         discord_presence.update_interval_seconds = 15
 
+    discord_presence.rpc_yield_to_game = bool(config.get("discord_rpc_yield_to_game", True))
+
     client_id = str(config.get("discord_rpc_client_id", "")).strip()
     env_client_id = os.getenv("WIZ_DISCORD_RPC_CLIENT_ID", "").strip()
     effective_client_id = client_id or env_client_id
@@ -241,7 +238,7 @@ def start_and_track_sessions(
     paths: dict,
     master_password: str,
     accounts: list,
-    discord: DiscordIntegration = None,
+    discord: Optional[DiscordIntegration] = None,
 ) -> None:
     """
     Start game instances with auto-login and track playtime sessions.
@@ -288,7 +285,8 @@ def start_and_track_sessions(
         )
 
     for handle, account in zip(new_handles, selected_accounts[:count]):
-        track_session_start(tracker, handle, account.username)
+        if config.get("auto_playtime_tracking", True):
+            track_session_start(tracker, handle, account.username)
         active_sessions[handle] = account.username
         logger.info(
             "Playtime session started: account=%s username=%s handle=%s",
@@ -297,7 +295,7 @@ def start_and_track_sessions(
             handle,
         )
 
-        if discord and config.get("discord_notifications"):
+        if discord and config.get("discord_notifications") and config.get("discord_session_start", True):
             discord.send_session_started(
                 account.name,
                 account.username,
@@ -366,6 +364,7 @@ def main() -> int:
         client_id=str(config.get("discord_rpc_client_id", "")).strip(),
         enabled=bool(config.get("discord_rich_presence", True)),
         update_interval_seconds=int(config.get("discord_rpc_update_interval", 15)),
+        rpc_yield_to_game=bool(config.get("discord_rpc_yield_to_game", True)),
     )
     sync_discord_presence_config(discord_presence, config)
     
@@ -387,7 +386,7 @@ def main() -> int:
     
     # Initialize update checker
     try:
-        updater = UpdateChecker(current_version=APP_VERSION, repo="oliwi/q-launcher")
+        updater = UpdateChecker(current_version=APP_VERSION)
     except Exception as e:
         logger.warning(f"Failed to initialize update checker: {e}")
         updater = None
@@ -395,36 +394,181 @@ def main() -> int:
     # Initialize error reporter
     try:
         reporter = IssueReporter(
-            github_repo=config.get("github_repo", "oliwi/q-launcher"),
+            github_repo=config.get("github_repo", "xLordTime/wiz-q-launcher"),
             discord_webhook=config.get("discord_webhook_url")
         )
     except Exception as e:
         logger.warning(f"Failed to initialize issue reporter: {e}")
         reporter = None
     
+    log_file = paths["log_dir"] / "launcher.log"
+
     # Initialize log viewer
     try:
-        log_file = paths["log_dir"] / "launcher.log"
         log_viewer = LogViewer(log_file) if log_file.exists() else None
     except Exception as e:
         logger.warning(f"Failed to initialize log viewer: {e}")
         log_viewer = None
-    
-    # Initialize window manager
-    try:
-        win_manager = WindowManager()
-    except Exception as e:
-        logger.warning(f"Failed to initialize window manager: {e}")
-        win_manager = None
-    
+
+    # Wizwall state (no game hooks; lazy wizwalker usage)
+    _ww_windows: list = []          # last scanned WizWindow list
+    # JSON stores dict keys as strings; restore_positions() expects int handles.
+    _ww_saved_layout: dict = {
+        int(k): tuple(v)
+        for k, v in config.get("wizwall_saved_layout", {}).items()
+        if str(k).lstrip("-").isdigit() and isinstance(v, (list, tuple)) and len(v) == 4
+    }
+
     # Build and display window
     try:
-        window = build_window(config, accounts, log_file_path=str(log_file))
+        window: Any = build_window(config, accounts, log_file_path=str(log_file))
     except Exception as e:
         logger.exception(f"Failed to build window: {e}")
         sg.popup_error(f"Failed to build window:\n{str(e)}", title=APP_NAME)
         return 1
     logger = logging.getLogger("launcher")
+
+    latest_update_info: Optional[dict] = None
+    last_perf_snapshot_ts = 0.0
+    _update_result_queue: queue.Queue = queue.Queue()
+
+    # System tray (optional — needs pystray + Pillow in requirements)
+    tray = TrayIcon(title=APP_NAME)
+    if not TRAY_AVAILABLE:
+        logger.info(
+            "Tray icon unavailable — install pystray and Pillow for system tray support "
+            "(pip install pystray Pillow). F4 will minimize to taskbar instead."
+        )
+
+    def _stats_table_rows() -> list:
+        """Build stats table row data from current accounts + tracker (for in-place updates).
+        Active sessions are marked with 🟢 and show the live session time in parentheses.
+        Externally-tracked instances (unknown account) appear as extra rows at the bottom.
+        """
+        try:
+            stats = tracker.get_accounts_stats_sorted(accounts, sort_by="playtime")
+            active_usernames = {u for u in active_sessions.values() if u}
+            rows = []
+            for s in stats:
+                name = s["name"]
+                playtime = s["total_playtime"]
+                if s["username"] in active_usernames:
+                    live_secs = get_active_username_session_seconds(tracker, s["username"])
+                    live_str = tracker.format_playtime(live_secs) if live_secs >= 60 else "<1m"
+                    name = f"\U0001f7e2 {name}"
+                    playtime = f"{playtime}  (+{live_str})"
+                rows.append([name, playtime, str(s["sessions"]), s["avg_session"]])
+            # Rows for externally-started Wizard101 windows (no linked account)
+            ext_count = sum(1 for u in active_sessions.values() if u == "")
+            for i in range(ext_count):
+                rows.append([f"\U0001f7e2 External #{i + 1}", "(active)", "–", "–"])
+            return rows
+        except Exception:
+            return []
+
+    def refresh_performance_ui() -> None:
+        if not perf_monitor:
+            return
+
+        latest = perf_monitor.history[-1] if perf_monitor.history else None
+        avg = perf_monitor.get_average_metrics(last_n=10)
+        peak = perf_monitor.get_peak_metrics()
+
+        cpu_now = latest.cpu_percent if latest else 0.0
+        ram_now = latest.memory_percent if latest else 0.0
+        wizmem_now = latest.process_memory_mb if latest else 0.0
+
+        window["-PERF-CPU-"].update(f"{cpu_now:.1f}%")
+        window["-PERF-RAM-"].update(f"{ram_now:.1f}%")
+        window["-PERF-WIZMEM-"].update(f"{wizmem_now:.1f} MB")
+        window["-PERF-AVG-CPU-"].update(f"{avg.get('cpu_percent', 0.0):.1f}%")
+        window["-PERF-PEAK-CPU-"].update(f"{peak.get('cpu_percent', 0.0):.1f}%")
+        window["-PERF-PEAK-WIZMEM-"].update(f"{peak.get('wizard_memory_mb', 0.0):.1f} MB")
+
+        history_lines = []
+        for snap in perf_monitor.history[-12:]:
+            history_lines.append(
+                f"{snap.timestamp.strftime('%H:%M:%S')} | CPU {snap.cpu_percent:5.1f}% | "
+                f"RAM {snap.memory_percent:5.1f}% | WIZ {snap.process_memory_mb:7.1f} MB"
+            )
+        window["-PERF-HISTORY-"].update("\n".join(history_lines) if history_lines else "No snapshots yet.")
+
+    def _apply_update_result(update_info: Optional[dict], manual: bool = False) -> None:
+        """Apply the result of a (possibly async) update check to the UI."""
+        nonlocal latest_update_info
+        latest_update_info = update_info
+        config["last_update_check"] = int(time.time())
+        save_config(paths["config_file"], config)
+
+        if update_info:
+            status_text = (
+                f"\u2B06 Update available: v{update_info['new_version']} "
+                f"\u2014 click 'Open Download Page' to get it!"
+            )
+            window["-UPDATE-STATUS-"].update(status_text, text_color="#FFD700")
+            window["-UPDATE-BANNER-"].update(
+                f"Update available: v{update_info['new_version']}",
+                visible=True,
+            )
+            if manual:
+                if sg.popup_yes_no(
+                    UpdateChecker.format_release_info(update_info),
+                    title="Update Available",
+                    keep_on_top=True,
+                ) == "Yes":
+                    webbrowser.open(update_info["download_url"])
+        else:
+            status_text = f"\u2714 Up to date (v{APP_VERSION}) | Checked: {time.strftime('%Y-%m-%d %H:%M')}"
+            window["-UPDATE-STATUS-"].update(status_text, text_color="#87CEEB")
+            window["-UPDATE-BANNER-"].update(visible=False)
+            if manual:
+                sg.popup("You are already on the latest version.", title=APP_NAME)
+
+    def run_update_check(manual: bool = False) -> None:
+        """Trigger an update check (async for background, sync for manual)."""
+        if not updater:
+            window["-UPDATE-STATUS-"].update("Update checker unavailable.")
+            if manual:
+                sg.popup("Update checker is not available.", title=APP_NAME)
+            return
+
+        if manual:
+            # Manual: run synchronously so the user sees the result immediately
+            window["-UPDATE-STATUS-"].update("Checking for updates...")
+            update_info = updater.check_for_updates()
+            _apply_update_result(update_info, manual=True)
+        else:
+            # Background: put result into queue; event loop picks it up
+            window["-UPDATE-STATUS-"].update("Checking for updates in background...")
+
+            def _bg_callback(result: Optional[dict]) -> None:
+                _update_result_queue.put((result, False))
+
+            updater.check_for_updates_async(_bg_callback)
+
+    # Drain pending async update results in the event loop
+    def _poll_update_queue() -> None:
+        try:
+            while True:
+                result, manual = _update_result_queue.get_nowait()
+                _apply_update_result(result, manual=manual)
+        except queue.Empty:
+            pass
+
+    if config.get("check_for_updates", True):
+        now_ts = int(time.time())
+        interval = int(config.get("update_check_interval", 86400))
+        last_check = int(config.get("last_update_check", 0))
+        if now_ts - last_check >= interval:
+            run_update_check(manual=False)   # async background check on startup
+        else:
+            last_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(last_check))
+            window["-UPDATE-STATUS-"].update(
+                f"\u2714 Up to date (v{APP_VERSION}) | Last check: {last_str}",
+                text_color="#87CEEB",
+            )
+    else:
+        window["-UPDATE-STATUS-"].update("Automatic update checks are disabled in settings.")
 
     while True:
         try:
@@ -437,15 +581,22 @@ def main() -> int:
         # Handle playtime polling (timeout events)
         if event == sg.TIMEOUT_EVENT:
             try:
-                # Check for closed handles and end sessions
-                if active_sessions:
+                _track_auto = config.get("auto_playtime_tracking", True)
+                _track_ext = _track_auto and config.get("track_without_autologin", True)
+
+                # Fetch current handles once (used for end-detection and auto-tracking)
+                current_handles: set = set()
+                if active_sessions or _track_ext:
                     current_handles = set(get_wizard_handles_safe())
+
+                # End sessions for windows that have been closed
+                if active_sessions:
                     closed_handles = [h for h in active_sessions if h not in current_handles]
                     for handle in closed_handles:
                         acc_username = active_sessions.pop(handle)
                         acc = get_account_by_username(accounts, acc_username)
                         if acc:
-                            track_session_end(
+                            duration_secs = track_session_end(
                                 tracker,
                                 handle,
                                 acc,
@@ -453,12 +604,23 @@ def main() -> int:
                                 reason="window_closed",
                             )
                             save_accounts(paths["accounts_file"], master_password, accounts)
+                            if discord and config.get("discord_notifications") and config.get("discord_session_end", True) and duration_secs:
+                                discord.send_session_ended(acc.name, duration_secs / 60.0)
                         else:
                             logger.warning(
                                 "Playtime session ended for unknown username=%s handle=%s",
                                 acc_username,
                                 handle,
                             )
+
+                # Auto-detect externally-started Wizard101 windows (track_without_autologin)
+                if _track_ext:
+                    for h in current_handles:
+                        if h not in active_sessions:
+                            if _track_auto:
+                                track_session_start(tracker, h, "")
+                            active_sessions[h] = ""  # empty = externally started, account unknown
+                            logger.info("Auto-tracking externally-started wizard101 handle=%s", h)
                 sync_discord_presence_config(discord_presence, config)
                 activity_24h.set_active(bool(active_sessions))
 
@@ -480,9 +642,32 @@ def main() -> int:
                     selected_session_seconds=selected_seconds,
                     active_sessions_count=len(active_sessions),
                     region=config.get("current_region", "de"),
+                    total_account_playtime_seconds=(
+                        selected_account.total_playtime if selected_account else 0.0
+                    ),
                 )
+
+                if perf_monitor and config.get("enable_performance_monitor", True):
+                    poll_interval = max(1.0, float(config.get("performance_poll_interval", 5)))
+                    now_perf = time.time()
+                    if now_perf - last_perf_snapshot_ts >= poll_interval:
+                        perf_monitor.take_snapshot()
+                        refresh_performance_ui()
+                        last_perf_snapshot_ts = now_perf
+
+                # Auto-refresh Stats table in-place (no window rebuild needed)
+                window["-STATS-TABLE-"].update(values=_stats_table_rows())
+
+                # Drain async update-check results
+                _poll_update_queue()
+
             except Exception as e:
                 logger.exception(f"CRASH in TIMEOUT_EVENT handler: {e}")
+                if discord and config.get("discord_notifications") and config.get("discord_errors", False):
+                    try:
+                        discord.send_custom_message("⚠ Launcher Error", str(e), color=0xE74C3C)
+                    except Exception:
+                        pass
             continue
 
         if event in (sg.WIN_CLOSED, "Exit"):
@@ -635,6 +820,46 @@ def main() -> int:
             window["-AUTO-ACCOUNTS-"].update([account_display(a) for a in region_accounts])
             window["-SELECTED-COUNT-"].update("0 accounts selected")
 
+        # Move account up
+        if event == "-ACCT-UP-":
+            current_region = config.get("current_region", "de")
+            region_accounts = get_region_accounts(accounts, current_region)
+            selected = values.get("-ACCOUNTS-", [])
+            if selected:
+                sel_acc = next(
+                    (acc for acc in region_accounts if account_display(acc) in selected), None
+                )
+                if sel_acc is not None:
+                    idx = next((i for i, a in enumerate(accounts) if a.username == sel_acc.username), -1)
+                    if idx > 0:
+                        accounts[idx - 1], accounts[idx] = accounts[idx], accounts[idx - 1]
+                        save_accounts(paths["accounts_file"], master_password, accounts)
+                        region_accounts = get_region_accounts(accounts, current_region)
+                        new_display = [account_display(a) for a in region_accounts]
+                        new_idx = next((i for i, a in enumerate(region_accounts) if a.username == sel_acc.username), 0)
+                        window["-ACCOUNTS-"].update(new_display, set_to_index=new_idx)
+                        window["-AUTO-ACCOUNTS-"].update(new_display)
+
+        # Move account down
+        if event == "-ACCT-DOWN-":
+            current_region = config.get("current_region", "de")
+            region_accounts = get_region_accounts(accounts, current_region)
+            selected = values.get("-ACCOUNTS-", [])
+            if selected:
+                sel_acc = next(
+                    (acc for acc in region_accounts if account_display(acc) in selected), None
+                )
+                if sel_acc is not None:
+                    idx = next((i for i, a in enumerate(accounts) if a.username == sel_acc.username), -1)
+                    if idx != -1 and idx < len(accounts) - 1:
+                        accounts[idx], accounts[idx + 1] = accounts[idx + 1], accounts[idx]
+                        save_accounts(paths["accounts_file"], master_password, accounts)
+                        region_accounts = get_region_accounts(accounts, current_region)
+                        new_display = [account_display(a) for a in region_accounts]
+                        new_idx = next((i for i, a in enumerate(region_accounts) if a.username == sel_acc.username), 0)
+                        window["-ACCOUNTS-"].update(new_display, set_to_index=new_idx)
+                        window["-AUTO-ACCOUNTS-"].update(new_display)
+
         # Handle region visibility toggle
         region_visibility_changed = False
         for region_code in REGION_META:
@@ -660,7 +885,26 @@ def main() -> int:
                 config["discord_rpc_update_interval"] = max(5, int(values.get("-DISCORD-RPC-INTERVAL-", 15)))
             except ValueError:
                 config["discord_rpc_update_interval"] = 15
-            
+            config["discord_rpc_yield_to_game"] = values.get("-DISCORD-RPC-YIELD-", True)
+            config["discord_webhook_url"] = values.get("-DISCORD-WEBHOOK-URL-", "").strip()
+            config["discord_notifications"] = values.get("-DISCORD-NOTIFY-", False)
+            config["discord_session_start"] = values.get("-DISCORD-NOTIFY-START-", True)
+            config["discord_session_end"] = values.get("-DISCORD-NOTIFY-END-", True)
+            config["discord_errors"] = values.get("-DISCORD-NOTIFY-ERRORS-", False)
+            config["save_window_state"] = values.get("-SAVE-WINDOW-STATE-", False)
+            config["check_for_updates"] = values.get("-CHECK-FOR-UPDATES-", True)
+            config["enable_performance_monitor"] = values.get("-ENABLE-PERF-MONITOR-", True)
+            config["auto_playtime_tracking"] = values.get("-AUTO-PLAYTIME-", True)
+            config["track_without_autologin"] = values.get("-TRACK-WITHOUT-LOGIN-", False)
+            extra_args_str = values.get("-EXTRA-ARGS-", "").strip()
+            config["extra_args"] = extra_args_str.split() if extra_args_str else []
+
+            # Apply discord integration settings at runtime
+            if discord is not None:
+                discord.set_webhook_url(config["discord_webhook_url"])
+                discord.enabled = config["discord_notifications"]
+            sync_discord_presence_config(discord_presence, config)
+
             # Save region visibility settings
             for region_code in REGION_META:
                 toggle_key = f"-SHOW-{region_code.upper()}-"
@@ -676,143 +920,67 @@ def main() -> int:
             else:
                 window["-STATUS-"].update("Settings saved")
 
-        # ================== EXTENSIONS / WIZWALL ==================
-        # Toggle Wizwall Extension
-        if event == "-WIZWALL-ENABLED-":
-            wizwall_enabled = values["-WIZWALL-ENABLED-"]
-            config["wizwall_enabled"] = wizwall_enabled
-            
-            # Enable/disable all wizwall controls
-            window["-WIZWALL-LAYOUT-"].update(disabled=not wizwall_enabled)
-            window["-WIZWALL-AUTO-RESOLUTION-"].update(disabled=not wizwall_enabled)
-            window["-ARRANGE-WINDOWS-"].update(disabled=not wizwall_enabled)
-            window["-REFRESH-WINDOWS-"].update(disabled=not wizwall_enabled)
-            window["-SAVE-LAYOUT-"].update(disabled=not wizwall_enabled)
-            window["-RESTORE-LAYOUT-"].update(disabled=not wizwall_enabled)
-            window["-SET-RESOLUTION-"].update(disabled=not wizwall_enabled)
-            
-            status = "enabled" if wizwall_enabled else "disabled"
-            window["-STATUS-"].update(f"Wizwall extension {status}")
-            save_config(paths["config_file"], config)
-        
-        # Set Resolution for Layout
-        if event == "-SET-RESOLUTION-" and win_manager:
-            try:
-                layout = values.get("-WIZWALL-LAYOUT-", "2x2")
-                width, height = win_manager.get_optimal_resolution_for_layout(layout)
-                
-                # Get wizard install path
-                from services.launcher import get_wiz_install
-                wiz_path = get_wiz_install(config)
-                
-                # Confirm with user
-                msg = (
-                    f"This will set the game resolution to {width}x{height}\n"
-                    f"for optimal {layout} grid layout.\n\n"
-                    f"File: {wiz_path}/Bin/preferences.xml\n\n"
-                    f"⚠️  All running Wizard101 clients must be RESTARTED\n"
-                    f"for this change to take effect!\n\n"
-                    f"Continue?"
-                )
-                
-                if sg.popup_yes_no(msg, title="Set Game Resolution") == "Yes":
-                    success = win_manager.set_game_resolution(width, height, str(wiz_path))
-                    if success:
-                        sg.popup_ok(
-                            f"✓ Resolution set to {width}x{height}\n\n"
-                            f"Please RESTART all Wizard101 clients now!",
-                            title="Success"
-                        )
-                        window["-STATUS-"].update(f"Set resolution: {width}x{height} (restart clients!)")
-                    else:
-                        sg.popup_error("Failed to set resolution. Check logs.", title=APP_NAME)
-            except Exception as e:
-                logger.exception(f"Set resolution failed: {e}")
-                sg.popup_error(f"Failed to set resolution:\n{str(e)}", title=APP_NAME)
-        
-        # Arrange Windows - Multi-window grid layout
-        if event == "-ARRANGE-WINDOWS-" and win_manager:
-            try:
-                layout = values.get("-WIZWALL-LAYOUT-", "2x2")
-                
-                # Build account mapping for window identification
-                account_map = build_active_account_map(active_sessions, accounts)
-                
-                # Get all wizard windows
-                windows = win_manager.get_wizard_windows(account_map)
-                
-                if not windows:
-                    sg.popup("No Wizard101 windows found.\nStart some instances first!", title=APP_NAME)
-                else:
-                    # Arrange in selected grid layout
-                    arranged = win_manager.arrange_grid(windows, layout=layout, padding=10)
-                    
-                    # Update window list display
-                    window_info = "\n".join([
-                        f"[{i+1}] {w.account_name} - Handle: {w.handle}"
-                        for i, w in enumerate(windows)
-                    ])
-                    window["-WIZWALL-WINDOWS-"].update(window_info)
-                    
-                    window["-STATUS-"].update(f"✓ Arranged {arranged} windows in {layout} layout")
-                    logger.info(f"Arranged {arranged} windows in {layout} layout")
-            except Exception as e:
-                logger.exception(f"Window arrangement failed: {e}")
-                sg.popup_error(f"Failed to arrange windows:\n{str(e)}", title=APP_NAME)
+        # ================== WIZWALL — Window Tiling Extension ==================
+        # Scan: find all running Wizard101 windows (no game hooks)
+        if event == "-WW-SCAN-":
+            _ww_windows = wizwall.scan_windows()
+            display = wizwall.format_window_list(_ww_windows)
+            window["-WW-WINDOWS-"].update(display)
+            window["-WW-OUTPUT-"].update(f"Scanned: {len(_ww_windows)} window(s) found.")
+            window["-STATUS-"].update(f"Wizwall: {len(_ww_windows)} window(s) found")
 
-        # Refresh Window List - Show current windows
-        if event == "-REFRESH-WINDOWS-" and win_manager:
+        # Arrange: tile windows in the selected grid layout
+        if event == "-WW-ARRANGE-":
+            if not _ww_windows:
+                _ww_windows = wizwall.scan_windows()
+                window["-WW-WINDOWS-"].update(wizwall.format_window_list(_ww_windows))
+            layout_str  = str(values.get("-WW-LAYOUT-", "2x2"))
             try:
-                account_map = build_active_account_map(active_sessions, accounts)
-                windows = win_manager.get_wizard_windows(account_map)
-                
-                if windows:
-                    window_info = "\n".join([
-                        f"[{i+1}] {w.account_name} - Handle: {w.handle} - {w.title}"
-                        for i, w in enumerate(windows)
-                    ])
-                    window["-WIZWALL-WINDOWS-"].update(window_info)
-                    window["-STATUS-"].update(f"Found {len(windows)} active windows")
-                else:
-                    window["-WIZWALL-WINDOWS-"].update("No Wizard101 windows detected.")
-                    window["-STATUS-"].update("No active windows found")
-                    
-            except Exception as e:
-                logger.exception(f"Window refresh failed: {e}")
-                sg.popup_error(f"Failed to refresh windows:\n{str(e)}", title=APP_NAME)
-        
-        # Save Current Layout
-        if event == "-SAVE-LAYOUT-" and win_manager:
-            try:
-                account_map = build_active_account_map(active_sessions, accounts)
-                windows = win_manager.get_wizard_windows(account_map)
-                
-                if not windows:
-                    sg.popup("No windows to save layout for.", title=APP_NAME)
-                else:
-                    layout_data = win_manager.save_current_layout(windows)
-                    # Store in config for persistence
-                    config["saved_window_layout"] = layout_data
-                    save_config(paths["config_file"], config)
-                    window["-STATUS-"].update(f"✓ Saved layout for {len(layout_data)} windows")
-                    sg.popup_ok(f"Saved positions for {len(layout_data)} windows", title="Layout Saved")
-            except Exception as e:
-                logger.exception(f"Save layout failed: {e}")
-                sg.popup_error(f"Failed to save layout:\n{str(e)}", title=APP_NAME)
-        
-        # Restore Saved Layout
-        if event == "-RESTORE-LAYOUT-" and win_manager:
-            try:
-                layout_data = config.get("saved_window_layout", {})
-                if not layout_data:
-                    sg.popup("No saved layout found.\nUse 'Save Current Layout' first.", title=APP_NAME)
-                else:
-                    restored = win_manager.restore_layout(layout_data)
-                    window["-STATUS-"].update(f"✓ Restored {restored} windows")
-                    sg.popup_ok(f"Restored {restored} windows to saved positions", title="Layout Restored")
-            except Exception as e:
-                logger.exception(f"Restore layout failed: {e}")
-                sg.popup_error(f"Failed to restore layout:\n{str(e)}", title=APP_NAME)
+                padding = int(str(values.get("-WW-PADDING-", "4")).strip())
+            except ValueError:
+                padding = 4
+            borderless = bool(values.get("-WW-BORDERLESS-", True))
+            # Save preference
+            config["wizwall_layout"]    = layout_str
+            config["wizwall_padding"]   = padding
+            config["wizwall_borderless"] = borderless
+            save_config(paths["config_file"], config)
+
+            count, lines = wizwall.arrange_grid(
+                _ww_windows,
+                layout=layout_str,
+                padding=padding,
+                borderless=borderless,
+            )
+            window["-WW-OUTPUT-"].update("\n".join(lines))
+            window["-WW-WINDOWS-"].update(wizwall.format_window_list(_ww_windows))
+            window["-STATUS-"].update(f"Wizwall: arranged {count}/{len(_ww_windows)} window(s)")
+            logger.info("Wizwall arranged %d windows in %s layout", count, layout_str)
+
+        # Save: snapshot current window positions
+        if event == "-WW-SAVE-":
+            if not _ww_windows:
+                _ww_windows = wizwall.scan_windows()
+                window["-WW-WINDOWS-"].update(wizwall.format_window_list(_ww_windows))
+            _ww_saved_layout = wizwall.snapshot_positions(_ww_windows)
+            # Persist: convert int keys to str for JSON
+            config["wizwall_saved_layout"] = {str(k): list(v) for k, v in _ww_saved_layout.items()}
+            save_config(paths["config_file"], config)
+            window["-WW-OUTPUT-"].update(f"Saved positions for {len(_ww_saved_layout)} window(s).")
+            window["-STATUS-"].update(f"Wizwall: saved {len(_ww_saved_layout)} positions")
+
+        # Restore: move windows back to saved positions
+        if event == "-WW-RESTORE-":
+            if not _ww_saved_layout:
+                window["-WW-OUTPUT-"].update("No saved layout found.\nUse 'Save Positions' first.")
+            else:
+                if not _ww_windows:
+                    _ww_windows = wizwall.scan_windows()
+                    window["-WW-WINDOWS-"].update(wizwall.format_window_list(_ww_windows))
+                count, lines = wizwall.restore_positions(_ww_saved_layout, _ww_windows)
+                window["-WW-OUTPUT-"].update("\n".join(lines))
+                window["-WW-WINDOWS-"].update(wizwall.format_window_list(_ww_windows))
+                window["-STATUS-"].update(f"Wizwall: restored {count} window(s)")
 
         # Handle region-specific save and set as current
         for region_code in REGION_META:
@@ -861,6 +1029,101 @@ def main() -> int:
         # Open log folder
         if event == "Open log folder":
             os.startfile(str(paths["log_dir"]))
+
+        # ================== UPDATE BANNER CLICK ==================
+        if event == "-UPDATE-BANNER-":
+            if latest_update_info:
+                if sg.popup_yes_no(
+                    UpdateChecker.format_release_info(latest_update_info),
+                    title="Update Available",
+                    keep_on_top=True,
+                ) == "Yes":
+                    webbrowser.open(
+                        latest_update_info.get("download_url")
+                        or latest_update_info.get("release_page", "")
+                    )
+
+        # ================== SETTINGS: UPDATE CHECKER ==================
+        if event == "-CHECK-UPDATES-":
+            run_update_check(manual=True)
+
+        if event == "-OPEN-UPDATE-URL-":
+            try:
+                from services.update_checker import GITHUB_RELEASES_PAGE
+                url = GITHUB_RELEASES_PAGE
+                if latest_update_info:
+                    url = latest_update_info.get("download_url") or latest_update_info.get("release_page") or url
+                webbrowser.open(str(url))
+                window["-STATUS-"].update("Opened update download page")
+            except Exception as exc:
+                logger.warning("Failed to open update URL: %s", exc)
+                sg.popup(f"Could not open update page: {exc}", title=APP_NAME)
+
+        # ================== SETTINGS: CHANGE MASTER PASSWORD ==================
+        if event == "-CHANGE-PASSWORD-":
+            result = change_master_password(
+                paths["accounts_file"], master_password, accounts
+            )
+            if result == MASTER_PASSWORD_RESET:
+                # Full reset: wipe in-memory state, re-run first-time setup
+                accounts = []
+                master_password = load_master_password(paths["accounts_file"])
+                if not master_password:
+                    sg.popup("No master password set. Launcher will exit.", title=APP_NAME)
+                    break
+                accounts = load_accounts(paths["accounts_file"], master_password)
+                logger.info("Master password reset. New password set, accounts reloaded.")
+                window["-STATUS-"].update("Master password reset. Fresh start.")
+            elif result:
+                master_password = result
+                logger.info("Master password changed successfully.")
+                window["-STATUS-"].update("Master password changed.")
+
+        # ================== SETTINGS: ISSUE REPORTER ==================
+        if event == "-REPORT-ISSUE-":
+            title = str(values.get("-ISSUE-TITLE-", "")).strip()
+            context = str(values.get("-ISSUE-CONTEXT-", "")).strip()
+
+            if not title:
+                sg.popup("Please enter an issue title.", title=APP_NAME)
+            elif not reporter:
+                sg.popup("Issue reporter is not available.", title=APP_NAME)
+            else:
+                context_block = (
+                    f"App Version: {APP_VERSION}\n"
+                    f"Current Region: {config.get('current_region', 'de')}\n"
+                    f"\n{context}"
+                )
+                success = reporter.report_error(
+                    title=title,
+                    error=Exception("Manual issue report from UI"),
+                    context=context_block,
+                )
+                if success:
+                    sg.popup("Issue report sent successfully.", title=APP_NAME)
+                    window["-STATUS-"].update("Issue reported")
+                else:
+                    sg.popup("Failed to report issue. Check network/settings.", title=APP_NAME)
+
+        # ================== PERFORMANCE TAB ==================
+        if event == "-ENABLE-PERF-MONITOR-":
+            config["enable_performance_monitor"] = bool(values.get("-ENABLE-PERF-MONITOR-", True))
+            save_config(paths["config_file"], config)
+            state = "enabled" if config["enable_performance_monitor"] else "disabled"
+            window["-STATUS-"].update(f"Performance monitoring {state}")
+            logger.info("Performance monitoring %s", state)
+
+        if event == "-PERF-REFRESH-":
+            if perf_monitor:
+                perf_monitor.take_snapshot()
+                refresh_performance_ui()
+                window["-STATUS-"].update("Performance metrics refreshed")
+
+        if event == "-PERF-CLEAR-HISTORY-":
+            if perf_monitor:
+                perf_monitor.clear_history()
+                refresh_performance_ui()
+                window["-STATUS-"].update("Performance history cleared")
 
         # ================== LIVE LOG VIEWER HANDLERS ==================
         # Refresh logs - reload log file
@@ -923,6 +1186,22 @@ def main() -> int:
                 logger.warning(f"Log export failed: {e}")
                 sg.popup(f"Export failed: {e}", title=APP_NAME)
 
+        # ================== DISCORD WEBHOOK TEST ==================
+        if event == "-DISCORD-WEBHOOK-TEST-":
+            test_url = values.get("-DISCORD-WEBHOOK-URL-", "").strip()
+            if not test_url:
+                sg.popup("Enter a webhook URL first.", title=APP_NAME)
+            else:
+                try:
+                    _test_discord = DiscordIntegration(webhook_url=test_url)
+                    ok = _test_discord.test_connection()
+                    if ok:
+                        sg.popup("✓ Webhook test successful!", title=APP_NAME)
+                    else:
+                        sg.popup("✗ Webhook test failed — check the URL and try again.", title=APP_NAME)
+                except Exception as e:
+                    sg.popup(f"Webhook test error: {e}", title=APP_NAME)
+
         # ================== THEME TOGGLE HANDLER ==================
         # Switch between Dark and Light themes
         if event == "-THEME-":
@@ -939,11 +1218,9 @@ def main() -> int:
                 window["-STATUS-"].update(f"✓ Theme changed to {new_theme}")
                 logger.info(f"Theme changed to {new_theme}")
 
-        # Stats: Refresh - rebuild window with updated stats
+        # Stats: Refresh - update table in-place (no window rebuild)
         if event == "Refresh":
-
-            window.close()
-            window = build_window(config, accounts, log_file_path=str(log_file))
+            window["-STATS-TABLE-"].update(values=_stats_table_rows())
             window["-STATUS-"].update("Stats refreshed")
 
         # Stats: Export - save playtime stats to file
@@ -966,6 +1243,28 @@ def main() -> int:
                 sg.popup(f"Export failed: {exc}", title=APP_NAME)
                 logger.exception("Stats export failed")
 
+        # Stats: Reset Selected - clear playtime for the selected account
+        if event == "-RESET-SELECTED-STATS-":
+            selected_rows = values.get("-STATS-TABLE-", [])
+            if not selected_rows:
+                sg.popup("Select an account row first.", title=APP_NAME)
+            else:
+                idx = selected_rows[0]
+                stats_snapshot = tracker.get_accounts_stats_sorted(accounts, sort_by="playtime")
+                if idx < len(stats_snapshot):
+                    target_username = stats_snapshot[idx]["username"]
+                    acc = get_account_by_username(accounts, target_username)
+                    if acc and sg.popup_yes_no(
+                        f"Reset playtime for '{acc.name}'? This cannot be undone!", title=APP_NAME
+                    ) == "Yes":
+                        acc.total_playtime = 0.0
+                        acc.sessions_count = 0
+                        acc.last_session_start = 0.0
+                        save_accounts(paths["accounts_file"], master_password, accounts)
+                        window["-STATS-TABLE-"].update(values=_stats_table_rows())
+                        window["-STATUS-"].update(f"✓ Stats cleared for {acc.name}")
+                        logger.info("Playtime reset for account=%s", acc.username)
+
         # Stats: Reset All - clear all playtime data
         if event == "Reset All Stats":
             if sg.popup_yes_no("Reset ALL playtime stats? This cannot be undone!", title=APP_NAME) == "Yes":
@@ -974,9 +1273,7 @@ def main() -> int:
                     account.sessions_count = 0
                     account.last_session_start = 0.0
                 save_accounts(paths["accounts_file"], master_password, accounts)
-
-                window.close()
-                window = build_window(config, accounts, log_file_path=str(log_file))
+                window["-STATS-TABLE-"].update(values=_stats_table_rows())
                 window["-STATUS-"].update("✓ All stats cleared")
                 logger.info("All playtime stats reset")
 
@@ -1036,14 +1333,29 @@ def main() -> int:
                     )
                     window["-STATUS-"].update(f"Started {count} account(s) with auto-login (F3)")
 
-        # F4 - Minimize to tray (or toggle window visibility)
+        # F4 - Minimize to tray (or restore)
         if event == "F4":
             if window.is_hidden():
                 window.un_hide()
+                tray.stop()
                 window["-STATUS-"].update("Window restored (F4)")
             else:
                 window.hide()
-                window["-STATUS-"].update("Minimized to background (F4)")
+                if tray.available:
+                    tray.start(window.write_event_value)
+                    window["-STATUS-"].update("Minimized to tray — right-click tray icon to restore (F4)")
+                else:
+                    window["-STATUS-"].update("Minimized (install pystray+Pillow for tray icon) (F4)")
+
+        # Tray icon — restore
+        if event == "-TRAY-RESTORE-":
+            window.un_hide()
+            tray.stop()
+            window["-STATUS-"].update("Restored from tray")
+
+        # Tray icon — exit
+        if event == "-TRAY-EXIT-":
+            break
 
         # Ctrl+E - Export Stats shortcut
         if event == "Ctrl+E":
@@ -1078,7 +1390,26 @@ def main() -> int:
                 config["discord_rpc_update_interval"] = max(5, int(values.get("-DISCORD-RPC-INTERVAL-", 15)))
             except ValueError:
                 config["discord_rpc_update_interval"] = 15
-            
+            config["discord_rpc_yield_to_game"] = values.get("-DISCORD-RPC-YIELD-", True)
+            config["discord_webhook_url"] = values.get("-DISCORD-WEBHOOK-URL-", "").strip()
+            config["discord_notifications"] = values.get("-DISCORD-NOTIFY-", False)
+            config["discord_session_start"] = values.get("-DISCORD-NOTIFY-START-", True)
+            config["discord_session_end"] = values.get("-DISCORD-NOTIFY-END-", True)
+            config["discord_errors"] = values.get("-DISCORD-NOTIFY-ERRORS-", False)
+            config["save_window_state"] = values.get("-SAVE-WINDOW-STATE-", False)
+            config["check_for_updates"] = values.get("-CHECK-FOR-UPDATES-", True)
+            config["enable_performance_monitor"] = values.get("-ENABLE-PERF-MONITOR-", True)
+            config["auto_playtime_tracking"] = values.get("-AUTO-PLAYTIME-", True)
+            config["track_without_autologin"] = values.get("-TRACK-WITHOUT-LOGIN-", False)
+            extra_args_str = values.get("-EXTRA-ARGS-", "").strip()
+            config["extra_args"] = extra_args_str.split() if extra_args_str else []
+
+            # Apply discord integration settings at runtime
+            if discord is not None:
+                discord.set_webhook_url(config["discord_webhook_url"])
+                discord.enabled = config["discord_notifications"]
+            sync_discord_presence_config(discord_presence, config)
+
             # Save region visibility settings
             for region_code in REGION_META:
                 toggle_key = f"-SHOW-{region_code.upper()}-"
@@ -1108,13 +1439,28 @@ def main() -> int:
                     handle,
                 )
         # Save final playtime data
-        save_accounts(paths["accounts_file"], master_password, accounts)
-        logger.info("Playtime sessions saved")
+        if master_password is not None:
+            save_accounts(paths["accounts_file"], master_password, accounts)
+            logger.info("Playtime sessions saved")
+        else:
+            logger.warning("Skipping final save — no master password set")
 
 
 
     activity_24h.close()
     discord_presence.close()
+    tray.stop()
+
+    # Save window position if requested
+    if config.get("save_window_state", False):
+        try:
+            loc = window.current_location()
+            if loc and loc[0] is not None and loc[1] is not None:
+                config["window_x"] = loc[0]
+                config["window_y"] = loc[1]
+                save_config(paths["config_file"], config)
+        except Exception:
+            pass
 
     window.close()
     logger.info("Launcher closed")

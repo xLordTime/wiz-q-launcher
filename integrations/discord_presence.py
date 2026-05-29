@@ -168,17 +168,22 @@ class DiscordRichPresence:
         client_id: str,
         enabled: bool = True,
         update_interval_seconds: int = 15,
+        rpc_yield_to_game: bool = True,
     ):
         self.logger = logging.getLogger("discord_presence")
         self.client_id = str(client_id or "").strip()
         self.enabled = bool(enabled)
         self.update_interval_seconds = max(5, int(update_interval_seconds))
+        # When True: clear our RPC while Wizard101 windows are open so Discord's
+        # automatic game-detection can show "Playing Wizard101" uninterrupted.
+        self.rpc_yield_to_game = bool(rpc_yield_to_game)
         self._rpc = None
         self._connected = False
         self._last_update = 0.0
         self._last_skip_reason: Optional[str] = None
         self._last_connect_error_log = 0.0
         self._last_update_error_log = 0.0
+        self._yielding_to_game = False
 
     def _log_skip_once(self, reason: str, message: str) -> None:
         """Avoid repeating the same skip reason every update interval."""
@@ -228,8 +233,19 @@ class DiscordRichPresence:
         selected_session_seconds: float,
         active_sessions_count: int,
         region: str,
+        total_account_playtime_seconds: float = 0.0,
     ) -> None:
-        """Update presence with rolling total and selected account session."""
+        """
+        Update Discord Rich Presence.
+
+        When *rpc_yield_to_game* is True and at least one Wizard101 window is
+        active, the presence is cleared so Discord's automatic game-detection
+        can show "Playing Wizard101" uninterrupted.  Presence resumes
+        automatically once all game windows are closed.
+
+        The *total_account_playtime_seconds* is the cumulative playtime stored
+        on the selected account (all-time, not just 24 h).
+        """
         if not self.enabled:
             self._log_skip_once("disabled", "Discord RPC update skipped: disabled in config")
             return
@@ -239,27 +255,65 @@ class DiscordRichPresence:
             return
 
         self._last_update = now
+
+        # ── Yield to Discord's Wizard101 auto-detection while game is running ──
+        if self.rpc_yield_to_game and active_sessions_count > 0:
+            if not self._yielding_to_game:
+                self._yielding_to_game = True
+                # Clearing our presence lets Discord's process-based game
+                # detection take over and show "Playing Wizard101" again.
+                if self._connected and self._rpc is not None:
+                    try:
+                        self._rpc.clear()
+                    except Exception:
+                        pass
+                self.logger.info(
+                    "Discord RPC yielded: %d Wizard101 session(s) active — "
+                    "game detection enabled",
+                    active_sessions_count,
+                )
+            self._log_skip_once(
+                "yield_to_game",
+                "Discord RPC idle: yielding to Wizard101 game detection",
+            )
+            return
+
+        # Resume from yield when all game windows are gone.
+        if self._yielding_to_game:
+            self._yielding_to_game = False
+            self._last_skip_reason = None
+            self.logger.info("Discord RPC resuming: no active Wizard101 sessions")
+
         if not self.connect():
             return
 
-        details = "Launcher ready"
-        state = f"24h active: {format_duration(total_24h_seconds)} | Session: 0s"
-        if selected_account_name and selected_session_seconds > 0:
-            details = f"Playing on {selected_account_name}"
-            state = (
-                f"24h active: {format_duration(total_24h_seconds)} | "
-                f"Session: {format_duration(selected_session_seconds)}"
-            )
-        elif selected_account_name:
-            details = f"Selected: {selected_account_name}"
-            state = f"24h active: {format_duration(total_24h_seconds)} | Session: waiting"
+        # ── Build presence strings ────────────────────────────────────────────
+        total_acc_str = (
+            format_duration(total_account_playtime_seconds)
+            if total_account_playtime_seconds > 0
+            else None
+        )
 
-        payload = {
+        details = "Wizard101 Launcher"
+        state = f"24h active: {format_duration(total_24h_seconds)}"
+
+        if selected_account_name and selected_session_seconds > 0:
+            details = "Playing Wizard101"
+            state = f"{selected_account_name}  |  Session: {format_duration(selected_session_seconds)}"
+            if total_acc_str:
+                state += f"  |  Total: {total_acc_str}"
+        elif selected_account_name:
+            details = "Wizard101 Launcher"
+            state = f"Selected: {selected_account_name}"
+            if total_acc_str:
+                state += f"  |  Total: {total_acc_str}"
+
+        payload: dict = {
             "details": details,
             "state": state,
             "large_text": (
-                f"Region {str(region).upper()} | "
-                f"Wizard windows: {active_sessions_count}"
+                f"Region {str(region).upper()}  |  "
+                f"24h active: {format_duration(total_24h_seconds)}"
             ),
         }
 
@@ -270,12 +324,14 @@ class DiscordRichPresence:
             self._rpc.update(**payload)
             self._last_skip_reason = None
             self.logger.info(
-                "Discord RPC updated: details=%s state=%s account=%s total24h=%s session=%s active_sessions=%s region=%s",
+                "Discord RPC updated: details=%s state=%s account=%s "
+                "total24h=%s session=%s total_acc=%s active_sessions=%s region=%s",
                 details,
                 state,
                 selected_account_name or "-",
                 format_duration(total_24h_seconds),
                 format_duration(selected_session_seconds),
+                format_duration(total_account_playtime_seconds),
                 active_sessions_count,
                 str(region).upper(),
             )

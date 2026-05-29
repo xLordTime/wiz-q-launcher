@@ -15,6 +15,10 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from core.config import APP_NAME
 
+# Sentinel returned by change_master_password() when the user chose
+# a full reset instead of changing the password.
+MASTER_PASSWORD_RESET = "__RESET__"
+
 
 @dataclass
 class Account:
@@ -135,6 +139,105 @@ def load_master_password(accounts_file: Path) -> Optional[str]:
             sg.popup("Master password invalid", title=APP_NAME)
         except Exception as exc:
             sg.popup(f"Failed to unlock: {exc}", title=APP_NAME)
+
+
+def change_master_password(
+    accounts_file: Path,
+    current_password: str,
+    accounts: List[Account],
+) -> Optional[str]:
+    """
+    Let the user change the master password.
+
+    Verifies the current password, asks for a new one (with confirmation),
+    re-encrypts all accounts with the new password, and saves the file.
+
+    Args:
+        accounts_file: Path to the encrypted accounts file.
+        current_password: The currently active master password.
+        accounts: Already-loaded list of Account objects.
+
+    Returns:
+        The new password string if changed successfully, None otherwise.
+    """
+    # ── Ask whether to change or fully reset ────────────────────────────────
+    choice = sg.popup_yes_no(
+        "What would you like to do?\n\n"
+        "  YES  →  Change master password (keep accounts)\n"
+        "  NO   →  RESET — delete all accounts and start fresh",
+        title=APP_NAME,
+    )
+    if choice is None:
+        return None
+
+    # ── RESET branch ─────────────────────────────────────────────────────────
+    if choice == "No":
+        confirm = sg.popup_yes_no(
+            "WARNING: This will permanently delete ALL saved accounts.\n"
+            "The launcher will behave as if it is starting for the first time.\n\n"
+            "Are you absolutely sure?",
+            title=APP_NAME,
+        )
+        if confirm != "Yes":
+            return None
+        try:
+            if accounts_file.exists():
+                accounts_file.unlink()
+        except Exception as exc:
+            sg.popup(f"Failed to delete accounts file:\n{exc}", title=APP_NAME)
+            return None
+        sg.popup(
+            "Accounts file deleted.\n"
+            "On next action you will be prompted to create a new master password.",
+            title=APP_NAME,
+        )
+        return MASTER_PASSWORD_RESET
+
+    # ── CHANGE branch ────────────────────────────────────────────────────────
+    entered = sg.popup_get_text(
+        "Enter your CURRENT master password to continue:",
+        title=APP_NAME,
+        password_char="*",
+    )
+    if not entered:
+        return None
+    if entered != current_password:
+        sg.popup("Current password is incorrect.", title=APP_NAME)
+        return None
+
+    new_pw = sg.popup_get_text(
+        "Enter NEW master password:",
+        title=APP_NAME,
+        password_char="*",
+    )
+    if not new_pw:
+        return None
+    if len(new_pw) < 4:
+        sg.popup("Password must be at least 4 characters.", title=APP_NAME)
+        return None
+
+    for attempt in range(3):
+        label = "Confirm NEW master password:"
+        if attempt > 0:
+            label += f"\n\nPasswords did not match — attempt {attempt + 1}/3:"
+        confirm_pw = sg.popup_get_text(
+            label,
+            title=APP_NAME,
+            password_char="*",
+        )
+        if confirm_pw is None:
+            return None
+        if new_pw == confirm_pw:
+            break
+        if attempt < 2:
+            sg.popup("Passwords do not match. Please try again.", title=APP_NAME)
+    else:
+        sg.popup("Passwords do not match — change cancelled.", title=APP_NAME)
+        return None
+
+    save_accounts(accounts_file, new_pw, accounts)
+    sg.popup("Master password changed successfully.", title=APP_NAME)
+    return new_pw
 
 
 def account_display(account: Account) -> str:

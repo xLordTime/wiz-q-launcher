@@ -1,4 +1,4 @@
-## 🎮 Playtime Tracker v0.2.0 - Neue Features
+## 🎮 Playtime Tracker v5.2.0 - Neue Features
 
 Ihr Launcher verfügt jetzt über einen umfassenden **Playtime Tracking System**!
 

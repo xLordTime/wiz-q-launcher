@@ -10,9 +10,12 @@ The launcher creates \config.json\ on first run with the following settings:
 |---------|------|---------|---------|
 | \current_region\ | string | \"de\" | Currently active region code |
 | \show_region_<code>\ | boolean | varies | Show/hide region tab (e.g., \show_region_de\) |
-| \egion_install_<code>\ | string | \"\" | Custom Wizard101 install path per region (auto-detected if empty) |
-| \egion_server_<code>\ | string | varies | Login server address per region |
-| \egion_port_<code>\ | integer | 12000 | Port number per region |
+| \
+egion_install_<code>\ | string | \"\" | Custom Wizard101 install path per region (auto-detected if empty) |
+| \
+egion_server_<code>\ | string | varies | Login server address per region |
+| \
+egion_port_<code>\ | integer | 12000 | Port number per region |
 
 ### Region Codes
 - \de\ - Deutschland (Germany) - Default: login-de.eu.wizard101.com
@@ -59,7 +62,8 @@ The launcher creates \config.json\ on first run with the following settings:
 
 | Setting | Type | Default | Purpose |
 |---------|------|---------|---------|
-| \install_path\ | string | \"\" | **DEPRECATED** - Use region-specific \egion_install_*\ instead |
+| \install_path\ | string | \"\" | **DEPRECATED** - Use region-specific \
+egion_install_*\ instead |
 | \login_ready_timeout\ | float | 10.0 | Max wait time for instance readiness detection |
 | \login_poll_interval\ | float | 0.5 | Poll interval when waiting for instance readiness |
 | \ccount_sort_last_used\ | boolean | true | Sort accounts by last usage time in UI |
@@ -72,7 +76,7 @@ The launcher creates \config.json\ on first run with the following settings:
 `json
 {
   \"app_name\": \"Wiz Q Launcher\",
-  \"app_version\": \"0.2.0\",
+  \"app_version\": \"5.2.0\",
   \"current_region\": \"de\",
   
   \"show_region_de\": true,
@@ -232,12 +236,14 @@ To restore default settings for a region:
 - Verify region code in \config.json\ matches REGION_META in \config.py\
 
 **Wrong server being used?**
-- Check that \egion_server_<code>\ matches active region
+- Check that \
+egion_server_<code>\ matches active region
 - Verify \current_region\ value in \config.json\
 - Check **Logs** tab to see which region launched
 
 **Custom install path not working?**
 - Path must be valid and accessible
-- Ensure \egion_install_<code>\ points to Wizard101 root directory
+- Ensure \
+egion_install_<code>\ points to Wizard101 root directory
 - Try leaving blank to use auto-detection instead
 - Check Launcher.log for path resolution errors

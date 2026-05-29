@@ -108,7 +108,18 @@ def start_instance(config: dict) -> None:
     """Start a single Wizard101 instance."""
     location = get_wiz_install(config)
     args = build_launch_args(config, location)
-    subprocess.Popen(args, cwd=str(location / "Bin"))
+    try:
+        subprocess.Popen(args, cwd=str(location / "Bin"))
+    except PermissionError as exc:
+        raise PermissionError(
+            f"Cannot start Wizard101 — permission denied: {exc}"
+        ) from exc
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            f"Wizard101 executable not found: {exc}"
+        ) from exc
+    except OSError as exc:
+        raise OSError(f"Failed to start Wizard101: {exc}") from exc
 
 
 def get_wizard_handles_safe() -> List[int]:
