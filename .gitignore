@@ -39,3 +39,4 @@ Thumbs.db
 
 # Private/Local
 change_master_password.bat
+tools/migrate_accounts.py
