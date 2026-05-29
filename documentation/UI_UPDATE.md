@@ -1,4 +1,4 @@
-## ✅ UI Updated with Full Region Support (5.1.0)
+## ✅ UI Updated with Full Region Support (5.2.0)
 
 Your Wizard101 Launcher now displays **all region information clearly** with per-region tabs!
 
@@ -35,9 +35,17 @@ Your Wizard101 Launcher now displays **all region information clearly** with per
   - Ελλάδα (GR) - disabled by default
 - **Live reload**: Toggling region visibility instantly adds/removes tabs (no restart!)
 - **Save Settings** button - persists all changes
+- **Discord Rich Presence** section — enable, client ID, update interval, yield-to-game toggle
+- **Discord Webhook Notifications** section — URL, enable, test button, session-start/end/errors toggles
+- **UI Theme** — 10 themes, applies immediately; Save Window State checkbox
+- **Update Checker** — check_for_updates toggle, manual check button
+- **Playtime Tracking** — auto_playtime_tracking and track_without_autologin toggles
+- **Launch Options** — extra_args field (space-separated arguments passed to the game)
+- **Security** — Change Master Password button
+- **Ctrl+S** — saves all settings without clicking the button
 
 #### **4. Window Title**
-Shows: `Wiz Q Launcher v5.1.0 | 🎮 Active: DEUTSCHLAND`
+Shows: `Wiz Q Launcher v5.2.0 | 🎮 Active: DEUTSCHLAND`
 
 ---
 
@@ -76,7 +84,7 @@ All region settings are **saved per-region** in config.json:
 
 ### **Technical Details**
 
-- ✅ **Version**: 5.1.0 (fixed sync issue)
+- ✅ **Version**: 5.2.0
 - ✅ **REGION_META**: 8 regions with metadata
 - ✅ **Config Keys**: `region_install_*`, `region_server_*`, `region_port_*`
 - ✅ **Live Reload**: Region visibility toggles rebuild window

@@ -18,7 +18,7 @@ class UpdateChecker:
         Initialize update checker.
 
         Args:
-            current_version: Current app version (e.g., "5.1.0")
+            current_version: Current app version (e.g., "5.2.0")
             repo: GitHub repository in owner/name format
         """
         self.logger = logging.getLogger("updater")
