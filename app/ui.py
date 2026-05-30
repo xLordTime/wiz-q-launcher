@@ -344,14 +344,6 @@ def build_settings_tab(config: dict) -> List:
             ),
         ],
         [
-            sg.Text("Discord RPC Client ID"),
-            sg.Input(
-                config.get("discord_rpc_client_id", ""),
-                key="-DISCORD-RPC-ID-",
-                size=(28, 1),
-            ),
-        ],
-        [
             sg.Text("RPC update interval (sec)"),
             sg.Input(
                 str(config.get("discord_rpc_update_interval", 15)),

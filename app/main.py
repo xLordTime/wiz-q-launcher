@@ -66,7 +66,7 @@ from services.playtime_tracker import PlaytimeTracker
 from app.ui import apply_theme, build_window
 from services.performance_monitor import PerformanceMonitor
 from integrations.discord_integration import DiscordIntegration
-from integrations.discord_presence import DiscordRichPresence, RollingActivity24h
+from integrations.discord_presence import DEFAULT_CLIENT_ID, DiscordRichPresence, RollingActivity24h
 from services.log_viewer import LogViewer
 from services.update_checker import UpdateChecker
 from services.issue_reporter import IssueReporter
@@ -221,14 +221,6 @@ def sync_discord_presence_config(
         discord_presence.update_interval_seconds = 15
 
     discord_presence.rpc_yield_to_game = bool(config.get("discord_rpc_yield_to_game", True))
-
-    client_id = str(config.get("discord_rpc_client_id", "")).strip()
-    env_client_id = os.getenv("WIZ_DISCORD_RPC_CLIENT_ID", "").strip()
-    effective_client_id = client_id or env_client_id
-
-    if discord_presence.client_id != effective_client_id:
-        discord_presence.close()
-        discord_presence.client_id = effective_client_id
 def start_and_track_sessions(
     config: dict,
     selected_accounts: list,
@@ -361,7 +353,7 @@ def main() -> int:
     # Initialize rolling 24h activity tracker + Discord Rich Presence
     activity_24h = RollingActivity24h(paths["data_dir"] / "activity_24h.json")
     discord_presence = DiscordRichPresence(
-        client_id=str(config.get("discord_rpc_client_id", "")).strip(),
+        client_id=DEFAULT_CLIENT_ID,
         enabled=bool(config.get("discord_rich_presence", True)),
         update_interval_seconds=int(config.get("discord_rpc_update_interval", 15)),
         rpc_yield_to_game=bool(config.get("discord_rpc_yield_to_game", True)),
@@ -880,7 +872,6 @@ def main() -> int:
             )
             config["log_level"] = values.get("-LOGLEVEL-", "INFO")
             config["discord_rich_presence"] = values.get("-DISCORD-RPC-", True)
-            config["discord_rpc_client_id"] = values.get("-DISCORD-RPC-ID-", "").strip()
             try:
                 config["discord_rpc_update_interval"] = max(5, int(values.get("-DISCORD-RPC-INTERVAL-", 15)))
             except ValueError:
@@ -1385,7 +1376,6 @@ def main() -> int:
             config["window_title_template"] = values.get("-TITLE-", "{name} ({username})")
             config["log_level"] = values.get("-LOGLEVEL-", "INFO")
             config["discord_rich_presence"] = values.get("-DISCORD-RPC-", True)
-            config["discord_rpc_client_id"] = values.get("-DISCORD-RPC-ID-", "").strip()
             try:
                 config["discord_rpc_update_interval"] = max(5, int(values.get("-DISCORD-RPC-INTERVAL-", 15)))
             except ValueError:

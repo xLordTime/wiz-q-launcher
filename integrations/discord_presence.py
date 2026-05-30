@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+DEFAULT_CLIENT_ID = "1433055168324173896"
+
 try:
     from pypresence import Presence
 

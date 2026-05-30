@@ -113,7 +113,6 @@ DEFAULT_CONFIG = {
     
     # Discord Rich Presence
     "discord_rich_presence": True,
-    "discord_rpc_client_id": "",
     "discord_rpc_update_interval": 15,
     # When True the RPC is cleared while Wizard101 windows are open so Discord's
     # automatic game-detection shows "Playing Wizard101" instead of our presence.
