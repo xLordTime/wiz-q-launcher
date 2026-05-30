@@ -12,7 +12,7 @@ class IssueReporter:
 
     def __init__(
         self,
-        github_repo: str = "oliwi/q-launcher",
+        github_repo: str = "xLordTime/wiz-q-launcher",
         github_token: Optional[str] = None,
         discord_webhook: Optional[str] = None
     ):
