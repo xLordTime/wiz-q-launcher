@@ -464,7 +464,7 @@ def build_settings_tab(config: dict) -> List:
         [sg.Text("Update Checker", font=("Segoe UI", 11, "bold"))],
         [
             sg.Button("Check for Updates", key="-CHECK-UPDATES-"),
-            sg.Button("Open Download Page", key="-OPEN-UPDATE-URL-"),
+            sg.Button("⬇ Download Update", key="-DOWNLOAD-UPDATE-", disabled=True),
         ],
         [
             sg.Text(

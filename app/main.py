@@ -69,7 +69,7 @@ from services.performance_monitor import PerformanceMonitor
 from integrations.discord_integration import DiscordIntegration
 from integrations.discord_presence import DEFAULT_CLIENT_ID, DiscordRichPresence, RollingActivity24h
 from services.log_viewer import LogViewer
-from services.update_checker import UpdateChecker
+from services.update_checker import UpdateChecker, GITHUB_RELEASES_PAGE as _RELEASES_PAGE
 from services.issue_reporter import IssueReporter
 import services.wizwall as wizwall
 from services.tray_icon import TrayIcon, TRAY_AVAILABLE
@@ -433,6 +433,8 @@ def main() -> int:
     last_stats_refresh_ts = 0.0        # throttle: update stats table every 5 s
     last_handles_ts = 0.0              # throttle: Win32 handle enumeration every 2 s
     _update_result_queue: queue.Queue = queue.Queue()
+    _download_queue: queue.Queue = queue.Queue()   # progress/complete/error from download thread
+    _pending_update_path: Optional[Path] = None    # path to downloaded .exe ready to install
 
     # System tray (optional — needs pystray + Pillow in requirements)
     tray = TrayIcon(title=APP_NAME)
@@ -505,24 +507,26 @@ def main() -> int:
         if update_info:
             status_text = (
                 f"\u2B06 Update available: v{update_info['new_version']} "
-                f"\u2014 click 'Open Download Page' to get it!"
+                f"\u2014 click '\u2B07 Download Update' to install!"
             )
             window["-UPDATE-STATUS-"].update(status_text, text_color="#FFD700")
             window["-UPDATE-BANNER-"].update(
                 f"Update available: v{update_info['new_version']}",
                 visible=True,
             )
+            window["-DOWNLOAD-UPDATE-"].update(disabled=False, text="\u2B07 Download Update")
             if manual:
                 if sg.popup_yes_no(
                     UpdateChecker.format_release_info(update_info),
-                    title="Update Available",
+                    title="Update Available — Download now?",
                     keep_on_top=True,
                 ) == "Yes":
-                    webbrowser.open(update_info["download_url"])
+                    _start_download_update()
         else:
             status_text = f"\u2714 Up to date (v{APP_VERSION}) | Checked: {time.strftime('%Y-%m-%d %H:%M')}"
             window["-UPDATE-STATUS-"].update(status_text, text_color="#87CEEB")
             window["-UPDATE-BANNER-"].update(visible=False)
+            window["-DOWNLOAD-UPDATE-"].update(disabled=True, text="\u2B07 Download Update")
             if manual:
                 sg.popup("You are already on the latest version.", title=APP_NAME)
 
@@ -554,6 +558,65 @@ def main() -> int:
             while True:
                 result, manual = _update_result_queue.get_nowait()
                 _apply_update_result(result, manual=manual)
+        except queue.Empty:
+            pass
+
+    def _start_download_update() -> None:
+        """Begin downloading the latest update in a background thread."""
+        nonlocal _pending_update_path
+        if not updater or not latest_update_info:
+            return
+        if not getattr(sys, "frozen", False):
+            # Dev mode — no self-replace possible, open browser instead
+            webbrowser.open(
+                latest_update_info.get("download_url")
+                or latest_update_info.get("release_page", _RELEASES_PAGE)
+            )
+            return
+        window["-DOWNLOAD-UPDATE-"].update(disabled=True, text="Downloading... 0%")
+        window["-UPDATE-STATUS-"].update("Downloading update...", text_color="#FFD700")
+
+        def _on_progress(pct: int) -> None:
+            _download_queue.put(("progress", pct))
+
+        def _on_complete(path: Path) -> None:
+            _download_queue.put(("complete", path))
+
+        def _on_error(msg: str) -> None:
+            _download_queue.put(("error", msg))
+
+        updater.download_update_async(latest_update_info, _on_progress, _on_complete, _on_error)
+
+    def _poll_download_queue() -> None:
+        """Drain download progress/complete/error events and update the UI."""
+        nonlocal _pending_update_path
+        try:
+            while True:
+                item = _download_queue.get_nowait()
+                kind = item[0]
+                if kind == "progress":
+                    pct = item[1]
+                    window["-DOWNLOAD-UPDATE-"].update(text=f"Downloading... {pct}%")
+                    window["-UPDATE-STATUS-"].update(
+                        f"Downloading update... {pct}%", text_color="#FFD700"
+                    )
+                elif kind == "complete":
+                    _pending_update_path = item[1]
+                    window["-DOWNLOAD-UPDATE-"].update(
+                        disabled=False, text="\U0001f504 Restart & Apply"
+                    )
+                    window["-UPDATE-STATUS-"].update(
+                        "\u2705 Update downloaded — click 'Restart & Apply' to install",
+                        text_color="#87CEEB",
+                    )
+                    logger.info("Update ready at %s", _pending_update_path)
+                elif kind == "error":
+                    msg = item[1]
+                    window["-DOWNLOAD-UPDATE-"].update(disabled=False, text="\u2B07 Download Update")
+                    window["-UPDATE-STATUS-"].update(
+                        f"\u274C Download failed: {msg}", text_color="#FF6B6B"
+                    )
+                    logger.error("Update download error: %s", msg)
         except queue.Empty:
             pass
 
@@ -671,6 +734,8 @@ def main() -> int:
 
                 # Drain async update-check results
                 _poll_update_queue()
+                # Drain download progress / complete / error
+                _poll_download_queue()
 
             except Exception as e:
                 logger.exception(f"CRASH in TIMEOUT_EVENT handler: {e}")
@@ -1081,28 +1146,30 @@ def main() -> int:
             if latest_update_info:
                 if sg.popup_yes_no(
                     UpdateChecker.format_release_info(latest_update_info),
-                    title="Update Available",
+                    title="Update Available — Download now?",
                     keep_on_top=True,
                 ) == "Yes":
-                    webbrowser.open(
-                        latest_update_info.get("download_url")
-                        or latest_update_info.get("release_page", "")
-                    )
+                    _start_download_update()
 
         # ================== SETTINGS: UPDATE CHECKER ==================
         if event == "-CHECK-UPDATES-":
             run_update_check(manual=True)
 
-        if event == "-OPEN-UPDATE-URL-":
-            try:
-                from services.update_checker import GITHUB_RELEASES_PAGE
-                url = GITHUB_RELEASES_PAGE
-                if latest_update_info:
-                    url = latest_update_info.get("download_url") or latest_update_info.get("release_page") or url
-                webbrowser.open(str(url))
-                window["-STATUS-"].update("Opened update download page")
-            except Exception as exc:
-                logger.warning("Failed to open update URL: %s", exc)
+        if event == "-DOWNLOAD-UPDATE-":
+            if _pending_update_path is not None:
+                # Update already downloaded — launch relay and exit
+                ok = UpdateChecker.apply_update_on_restart(_pending_update_path)
+                if ok:
+                    window.close()
+                    sys.exit(0)
+                else:
+                    # Frozen exe not available (dev mode) — open browser
+                    webbrowser.open(
+                        latest_update_info.get("download_url", _RELEASES_PAGE)
+                        if latest_update_info else _RELEASES_PAGE
+                    )
+            else:
+                _start_download_update()
                 sg.popup(f"Could not open update page: {exc}", title=APP_NAME)
 
         # ================== SETTINGS: CHANGE MASTER PASSWORD ==================

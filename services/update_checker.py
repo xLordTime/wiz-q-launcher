@@ -1,8 +1,12 @@
 """Automatic update checking and version management."""
 
 import logging
+import os
+import subprocess
+import sys
 import threading
 import requests
+from pathlib import Path
 from typing import Optional, Dict, Callable
 from packaging import version as pkg_version
 
@@ -161,3 +165,117 @@ class UpdateChecker:
             f"{'─' * 48}\n"
             f"\nDownload: {update_info['download_url']}"
         )
+
+    # ------------------------------------------------------------------
+    # Self-update: download + in-place replace
+    # ------------------------------------------------------------------
+
+    def download_update_async(
+        self,
+        update_info: Dict,
+        on_progress: Callable[[int], None],
+        on_complete: Callable[[Path], None],
+        on_error: Callable[[str], None],
+    ) -> None:
+        """Download the update .exe in a background thread.
+
+        Callbacks are invoked from the worker thread — callers must route
+        UI updates through a thread-safe queue.
+
+        Args:
+            update_info:  The dict returned by check_for_updates().
+            on_progress:  Called with integer 0-100 as bytes arrive.
+            on_complete:  Called with the Path of the downloaded file.
+            on_error:     Called with an error description string.
+        """
+        def _worker() -> None:
+            url = update_info.get("download_url", "")
+            if not url or not url.lower().endswith(".exe"):
+                on_error("No .exe download URL found in this release.")
+                return
+
+            if getattr(sys, "frozen", False):
+                dest_dir = Path(sys.executable).parent
+            else:
+                # Dev mode — put next to the project root
+                dest_dir = Path(__file__).resolve().parent.parent
+
+            dest_path = dest_dir / "wiz-q-launcher_update.exe"
+
+            try:
+                response = requests.get(
+                    url,
+                    stream=True,
+                    timeout=120,
+                    headers={"Accept": "application/octet-stream"},
+                )
+                response.raise_for_status()
+                total = int(response.headers.get("Content-Length", 0))
+                downloaded = 0
+
+                with open(dest_path, "wb") as fh:
+                    for chunk in response.iter_content(chunk_size=65536):
+                        if chunk:
+                            fh.write(chunk)
+                            downloaded += len(chunk)
+                            if total > 0:
+                                on_progress(int(downloaded * 100 / total))
+
+                on_progress(100)
+                on_complete(dest_path)
+                self.logger.info("Update downloaded to %s", dest_path)
+
+            except Exception as exc:
+                self.logger.error("Update download failed: %s", exc)
+                try:
+                    dest_path.unlink()
+                except Exception:
+                    pass
+                on_error(str(exc))
+
+        threading.Thread(target=_worker, name="update-download", daemon=True).start()
+
+    @staticmethod
+    def apply_update_on_restart(new_exe_path: Path) -> bool:
+        """Write a relay .bat that swaps new_exe_path → current exe once this process exits.
+
+        Launches the relay detached so it survives after the launcher closes,
+        then the caller should call sys.exit().
+
+        Only works when running as a compiled (PyInstaller-frozen) .exe.
+        Returns True on success, False otherwise.
+        """
+        if not getattr(sys, "frozen", False):
+            return False
+
+        current_exe = Path(sys.executable)
+        bat_path = current_exe.parent / "_update_relay.bat"
+        pid = os.getpid()
+
+        # The label must be alphanumeric — use the PID
+        script = (
+            "@echo off\n"
+            "rem Wiz Q Launcher auto-updater relay — auto-deleted after use\n"
+            f":wait{pid}\n"
+            f"tasklist /fi \"PID eq {pid}\" 2>nul | findstr /i \"{pid}\" >nul\n"
+            f"if not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait{pid})\n"
+            f"move /Y \"{new_exe_path}\" \"{current_exe}\"\n"
+            f"start \"\" \"{current_exe}\"\n"
+            "del \"%~f0\"\n"
+        )
+
+        try:
+            bat_path.write_text(script, encoding="ascii")
+            subprocess.Popen(
+                ["cmd.exe", "/c", str(bat_path)],
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                close_fds=True,
+            )
+            return True
+        except Exception as exc:
+            logging.getLogger("updater").error("Failed to launch update relay: %s", exc)
+            try:
+                bat_path.unlink()
+            except Exception:
+                pass
+            return False
