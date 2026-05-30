@@ -134,6 +134,10 @@ DEFAULT_CONFIG = {
     "wizwall_enabled": True,
     "wizwall_default_layout": "2x2",
     "wizwall_auto_set_resolution": True,
+    # Clip & Record extension
+    "capture_output_dir": "recordings",
+    "capture_fps": 20,
+    "clip_buffer_seconds": 30,
 }
 
 

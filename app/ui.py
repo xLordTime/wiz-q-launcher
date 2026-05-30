@@ -853,14 +853,106 @@ def build_wizwall_tab(config: dict) -> List:
 
 
 def build_extensions_tab(config: dict) -> List:
-    """Build Extensions tab containing the Wizwall sub-tab."""
+    """Build Extensions tab containing extension sub-tabs."""
     return [
         [
             sg.TabGroup(
-                [[sg.Tab("Wizwall", build_wizwall_tab(config), key="-TAB-WIZWALL-")]],
+                [[
+                    sg.Tab("Wizwall", build_wizwall_tab(config), key="-TAB-WIZWALL-"),
+                    sg.Tab("Clip & Record", build_capture_tab(config), key="-TAB-CAPTURE-"),
+                ]],
                 key="-EXTENSIONS-TABGROUP-",
             )
         ]
+    ]
+
+
+def build_capture_tab(config: dict) -> List:
+    """Build the Clip & Record extension tab layout."""
+    from extensions import window_capture as _wc
+    cv2_status = "✅ opencv-python installed — MP4 output enabled" if _wc.CV2_AVAILABLE else (
+        "⚠ opencv-python not found — PNG frame sequence fallback\n"
+        "  Install with:  pip install opencv-python"
+    )
+    pil_status = "✅ Pillow installed" if _wc.PIL_AVAILABLE else (
+        "❌ Pillow not found — capture disabled  (pip install Pillow)"
+    )
+
+    return [
+        [sg.Text("Clip & Record", font=("Segoe UI", 12, "bold"))],
+        [sg.Text(f"{pil_status}    {cv2_status}", font=("Segoe UI", 8), text_color="#888888")],
+        [sg.HorizontalSeparator()],
+
+        # Window list
+        [sg.Text("Active Wizard101 Windows:", font=("Segoe UI", 10, "bold"))],
+        [
+            sg.Listbox(
+                values=[],
+                key="-CAP-WINDOWS-",
+                size=(50, 5),
+                select_mode=sg.SELECT_MODE_SINGLE,
+                enable_events=True,
+            ),
+            sg.Column([
+                [sg.Button("🔍 Scan Windows", key="-CAP-SCAN-", size=(16, 1))],
+                [sg.Button("📸 Screenshot All", key="-CAP-SCREENSHOT-ALL-", size=(16, 1))],
+                [sg.Button("📸 Screenshot", key="-CAP-SCREENSHOT-", size=(16, 1))],
+            ]),
+        ],
+
+        [sg.HorizontalSeparator()],
+
+        # Recording controls
+        [sg.Text("Recording:", font=("Segoe UI", 10, "bold"))],
+        [
+            sg.Button("⏺ Start Recording", key="-CAP-REC-START-", size=(18, 1)),
+            sg.Button("⏹ Stop Recording", key="-CAP-REC-STOP-", size=(18, 1), disabled=True),
+            sg.Button("💾 Save Clip", key="-CAP-CLIP-SAVE-", size=(14, 1),
+                      tooltip=f"Save last {config.get('clip_buffer_seconds', 30)}s from buffer"),
+        ],
+        [sg.Text("", key="-CAP-REC-STATUS-", size=(60, 1), font=("Segoe UI", 9))],
+
+        [sg.HorizontalSeparator()],
+
+        # Settings
+        [sg.Text("Settings:", font=("Segoe UI", 10, "bold"))],
+        [
+            sg.Text("Output folder:", size=(14, 1)),
+            sg.Input(
+                config.get("capture_output_dir", "recordings"),
+                key="-CAP-OUTPUT-DIR-",
+                size=(30, 1),
+            ),
+            sg.FolderBrowse("Browse", target="-CAP-OUTPUT-DIR-"),
+        ],
+        [
+            sg.Text("FPS:", size=(14, 1)),
+            sg.Spin(
+                values=[10, 15, 20, 24, 30],
+                initial_value=config.get("capture_fps", 20),
+                key="-CAP-FPS-",
+                size=(5, 1),
+            ),
+            sg.Text("Clip buffer (s):", size=(14, 1)),
+            sg.Spin(
+                values=list(range(10, 121, 10)),
+                initial_value=config.get("clip_buffer_seconds", 30),
+                key="-CAP-CLIP-SECS-",
+                size=(5, 1),
+            ),
+        ],
+        [sg.Button("💾 Save Settings", key="-CAP-SAVE-SETTINGS-", size=(16, 1))],
+
+        [sg.HorizontalSeparator()],
+        [sg.Text("Output:", font=("Segoe UI", 9, "bold"))],
+        [sg.Multiline(
+            "",
+            key="-CAP-OUTPUT-",
+            size=(68, 5),
+            disabled=True,
+            autoscroll=True,
+            font=("Consolas", 8),
+        )],
     ]
 
 

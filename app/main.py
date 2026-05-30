@@ -72,6 +72,7 @@ from services.log_viewer import LogViewer
 from services.update_checker import UpdateChecker, GITHUB_RELEASES_PAGE as _RELEASES_PAGE
 from services.issue_reporter import IssueReporter
 import services.wizwall as wizwall
+import extensions.window_capture as window_capture
 from services.tray_icon import TrayIcon, TRAY_AVAILABLE
 
 
@@ -415,6 +416,9 @@ def main() -> int:
         for k, v in config.get("wizwall_saved_layout", {}).items()
         if str(k).lstrip("-").isdigit() and isinstance(v, (list, tuple)) and len(v) == 4
     }
+
+    # Clip & Record state
+    _cap_windows: list = []         # last scanned CaptureWindow list
 
     # Build and display window
     try:
@@ -1061,6 +1065,148 @@ def main() -> int:
                 window["-WW-OUTPUT-"].update("\n".join(lines))
                 window["-WW-WINDOWS-"].update(wizwall.format_window_list(_ww_windows))
                 window["-STATUS-"].update(f"Wizwall: restored {count} window(s)")
+
+        # ================== CLIP & RECORD Extension ==================
+
+        def _cap_output_dir() -> Path:
+            raw = str(values.get("-CAP-OUTPUT-DIR-", "") or config.get("capture_output_dir", "recordings")).strip()
+            p = Path(raw)
+            return p if p.is_absolute() else (paths["root"] / p)
+
+        def _cap_fps() -> int:
+            try:
+                return int(values.get("-CAP-FPS-", config.get("capture_fps", 20)))
+            except (TypeError, ValueError):
+                return 20
+
+        def _cap_clip_secs() -> int:
+            try:
+                return int(values.get("-CAP-CLIP-SECS-", config.get("clip_buffer_seconds", 30)))
+            except (TypeError, ValueError):
+                return 30
+
+        def _cap_selected_window():
+            """Return the selected CaptureWindow or None."""
+            sel = values.get("-CAP-WINDOWS-") or []
+            if not sel or not _cap_windows:
+                return None
+            label = sel[0].split("  (hwnd=")[0]
+            return next((w for w in _cap_windows if w.label == label), None)
+
+        def _cap_refresh_list():
+            window["-CAP-WINDOWS-"].update(
+                [f"{w.label}  (hwnd={w.handle})" for w in _cap_windows]
+            )
+
+        def _cap_update_rec_status():
+            sel = _cap_selected_window()
+            if sel and window_capture.is_recording(sel.handle):
+                info = window_capture.active_recording_info(sel.handle) or ""
+                window["-CAP-REC-STATUS-"].update(info)
+            else:
+                window["-CAP-REC-STATUS-"].update("")
+
+        # Scan
+        if event == "-CAP-SCAN-":
+            _cap_windows = window_capture.scan_windows(
+                account_map={h: u for h, u in active_sessions.items() if u}
+            )
+            _cap_refresh_list()
+            window["-CAP-OUTPUT-"].update(f"Found {len(_cap_windows)} window(s).\n", append=True)
+            window["-STATUS-"].update(f"Capture: {len(_cap_windows)} window(s) found")
+
+        # Screenshot selected
+        if event == "-CAP-SCREENSHOT-":
+            sel = _cap_selected_window()
+            if sel is None:
+                window["-CAP-OUTPUT-"].update("⚠ Select a window first.\n", append=True)
+            else:
+                path_saved = window_capture.take_screenshot(sel.handle, sel.label, _cap_output_dir())
+                if path_saved:
+                    window["-CAP-OUTPUT-"].update(f"📸 {path_saved}\n", append=True)
+                    window["-STATUS-"].update(f"Screenshot saved: {path_saved.name}")
+                else:
+                    window["-CAP-OUTPUT-"].update("❌ Screenshot failed — is the window open?\n", append=True)
+
+        # Screenshot all
+        if event == "-CAP-SCREENSHOT-ALL-":
+            if not _cap_windows:
+                _cap_windows = window_capture.scan_windows(
+                    account_map={h: u for h, u in active_sessions.items() if u}
+                )
+                _cap_refresh_list()
+            saved_paths = window_capture.screenshot_all(_cap_windows, _cap_output_dir())
+            for p in saved_paths:
+                window["-CAP-OUTPUT-"].update(f"📸 {p}\n", append=True)
+            window["-STATUS-"].update(f"Screenshots: {len(saved_paths)} saved")
+
+        # Start recording
+        if event == "-CAP-REC-START-":
+            sel = _cap_selected_window()
+            if sel is None:
+                window["-CAP-OUTPUT-"].update("⚠ Select a window first.\n", append=True)
+            elif window_capture.is_recording(sel.handle):
+                window["-CAP-OUTPUT-"].update(f"⚠ Already recording {sel.label}\n", append=True)
+            else:
+                state = window_capture.start_recording(
+                    sel, _cap_output_dir(), fps=_cap_fps(), clip_buffer_seconds=_cap_clip_secs()
+                )
+                window["-CAP-REC-START-"].update(disabled=True)
+                window["-CAP-REC-STOP-"].update(disabled=False)
+                enc = "MP4 (cv2)" if window_capture.CV2_AVAILABLE else "PNG frames"
+                window["-CAP-OUTPUT-"].update(
+                    f"⏺ Recording {sel.label} → {state.output_path.name}  [{enc}]\n", append=True
+                )
+                window["-STATUS-"].update(f"Recording: {sel.label}")
+
+        # Stop recording
+        if event == "-CAP-REC-STOP-":
+            sel = _cap_selected_window()
+            handle = sel.handle if sel else None
+            if handle is None and _cap_windows:
+                # Stop first active recording if nothing selected
+                for w in _cap_windows:
+                    if window_capture.is_recording(w.handle):
+                        handle = w.handle
+                        break
+            if handle is not None:
+                out_path = window_capture.stop_recording(handle)
+                window["-CAP-REC-START-"].update(disabled=False)
+                window["-CAP-REC-STOP-"].update(disabled=True)
+                window["-CAP-REC-STATUS-"].update("")
+                if out_path:
+                    window["-CAP-OUTPUT-"].update(f"⏹ Saved: {out_path}\n", append=True)
+                    window["-STATUS-"].update(f"Recording saved: {out_path.name}")
+                else:
+                    window["-CAP-OUTPUT-"].update("⏹ Recording stopped (no frames captured).\n", append=True)
+
+        # Save clip from ring buffer
+        if event == "-CAP-CLIP-SAVE-":
+            sel = _cap_selected_window()
+            if sel is None:
+                window["-CAP-OUTPUT-"].update("⚠ Select a window first.\n", append=True)
+            else:
+                clip_path = window_capture.save_clip(sel.handle, sel.label, _cap_output_dir(), _cap_fps())
+                if clip_path:
+                    window["-CAP-OUTPUT-"].update(f"💾 Clip saved: {clip_path}\n", append=True)
+                    window["-STATUS-"].update(f"Clip saved: {Path(clip_path).name}")
+                else:
+                    window["-CAP-OUTPUT-"].update(
+                        "⚠ No clip data yet — start recording first to fill the buffer.\n", append=True
+                    )
+
+        # Save capture settings
+        if event == "-CAP-SAVE-SETTINGS-":
+            config["capture_output_dir"] = str(values.get("-CAP-OUTPUT-DIR-", "recordings")).strip()
+            config["capture_fps"] = _cap_fps()
+            config["clip_buffer_seconds"] = _cap_clip_secs()
+            save_config(paths["config_file"], config)
+            window["-CAP-OUTPUT-"].update("✅ Settings saved.\n", append=True)
+            window["-STATUS-"].update("Capture settings saved")
+
+        # Keep rec status refreshed on each tick
+        if event == sg.TIMEOUT_EVENT and _cap_windows:
+            _cap_update_rec_status()
 
         # Handle region-specific save and set as current
         for region_code in REGION_META:
