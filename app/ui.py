@@ -3,6 +3,7 @@
 from typing import List, Optional
 from pathlib import Path
 import logging
+import sys
 import tkinter as _tk
 
 import PySimpleGUI as sg
@@ -191,44 +192,67 @@ def bind_mousewheel_scroll(window: sg.Window) -> None:
         pass
 
 
+def _find_asset(filename: str) -> Optional[Path]:
+    """Find a bundled asset by filename, checking frozen and dev paths."""
+    candidates = []
+    # PyInstaller frozen: extracted files live in sys._MEIPASS
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        candidates.append(Path(sys._MEIPASS) / filename)
+        # Also check next to the .exe itself
+        candidates.append(Path(sys.executable).parent / filename)
+    # Dev mode: walk up from this file to find the project root
+    for parent in Path(__file__).parents:
+        candidates.append(parent / filename)
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
+
 def resolve_icon_path(config: dict) -> Optional[str]:
     """
     Resolve an icon path for the main window.
     Supports .ico directly, or .png with optional Pillow conversion.
+    Always falls back to icon.ico from the bundled assets.
     """
     icon_path = str(config.get("app_icon_path", "")).strip()
-    if not icon_path:
-        return None
 
-    path = Path(icon_path)
-    if not path.is_absolute():
-        path = path.resolve()
+    # Try the config-specified path first
+    if icon_path:
+        path = Path(icon_path)
+        if not path.is_absolute():
+            # Check in bundled asset locations before falling back to CWD
+            asset = _find_asset(path.name)
+            path = asset if asset is not None else path.resolve()
+        if path.exists():
+            if path.suffix.lower() == ".ico":
+                return str(path)
+            if path.suffix.lower() == ".png":
+                return _convert_png_to_ico(path)
+            logging.getLogger("ui").warning("Unsupported icon format: %s", path)
 
-    if not path.exists():
-        logging.getLogger("ui").warning("Icon path not found: %s", path)
-        return None
+    # Fallback: always try icon.ico from bundled assets
+    fallback = _find_asset("icon.ico")
+    if fallback:
+        return str(fallback)
 
-    if path.suffix.lower() == ".ico":
-        return str(path)
-
-    if path.suffix.lower() == ".png":
-        ico_path = path.with_suffix(".ico")
-        if ico_path.exists():
-            return str(ico_path)
-        try:
-            from PIL import Image
-
-            with Image.open(path) as img:
-                img.save(ico_path)
-            return str(ico_path)
-        except Exception as exc:
-            logging.getLogger("ui").warning(
-                "Failed to convert PNG icon to ICO: %s", exc
-            )
-            return str(path)
-
-    logging.getLogger("ui").warning("Unsupported icon format: %s", path)
+    logging.getLogger("ui").warning("icon.ico not found")
     return None
+
+
+def _convert_png_to_ico(path: Path) -> Optional[str]:
+    """Convert a PNG to .ico using Pillow; returns the .ico path or the PNG path as fallback."""
+    ico_path = path.with_suffix(".ico")
+    if ico_path.exists():
+        return str(ico_path)
+    try:
+        from PIL import Image
+        with Image.open(path) as img:
+            img.save(ico_path)
+        return str(ico_path)
+    except Exception as exc:
+        logging.getLogger("ui").warning("Failed to convert PNG icon to ICO: %s", exc)
+        return str(path)
 
 
 def build_launch_tab(config: dict, account_list: List[str]) -> List:
