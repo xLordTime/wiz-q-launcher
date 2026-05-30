@@ -1,7 +1,7 @@
 """Discord Webhook integration for session notifications."""
 
 import logging
-import json
+import threading
 import requests
 from typing import Optional
 from datetime import datetime
@@ -54,7 +54,8 @@ class DiscordIntegration:
             "timestamp": datetime.now().isoformat(),
         }
         
-        return self._send_embed(embed)
+        self._send_embed_async(embed)
+        return True
 
     def send_session_ended(self, account_name: str, playtime_minutes: float) -> bool:
         """
@@ -81,7 +82,8 @@ class DiscordIntegration:
             "timestamp": datetime.now().isoformat(),
         }
         
-        return self._send_embed(embed)
+        self._send_embed_async(embed)
+        return True
 
     def send_custom_message(self, title: str, message: str, color: int = 3447003) -> bool:
         """
@@ -105,7 +107,8 @@ class DiscordIntegration:
             "timestamp": datetime.now().isoformat(),
         }
         
-        return self._send_embed(embed)
+        self._send_embed_async(embed)
+        return True
 
     def _send_embed(self, embed: dict) -> bool:
         """
@@ -142,6 +145,11 @@ class DiscordIntegration:
         except Exception as e:
             self.logger.error("Discord integration error (%s)", type(e).__name__)
             return False
+
+    def _send_embed_async(self, embed: dict) -> None:
+        """Fire-and-forget: send embed in a daemon thread so the main thread is never blocked."""
+        thread = threading.Thread(target=self._send_embed, args=(embed,), daemon=True)
+        thread.start()
 
     def test_connection(self) -> bool:
         """

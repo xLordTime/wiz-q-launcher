@@ -137,6 +137,13 @@ class LogViewer:
             self.logger.warning(f"Log file not found: {self.log_file}")
             return
         
+        # Skip file open entirely if the file hasn't grown since last read
+        try:
+            if self.log_file.stat().st_size == self._last_position:
+                return
+        except OSError:
+            return
+        
         try:
             with open(self.log_file, "r", encoding="utf-8", errors="ignore") as f:
                 # Seek to last known position

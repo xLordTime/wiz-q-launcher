@@ -625,31 +625,35 @@ def main() -> int:
                                 track_session_start(tracker, h, "")
                             active_sessions[h] = ""  # empty = externally started, account unknown
                             logger.info("Auto-tracking externally-started wizard101 handle=%s", h)
-                sync_discord_presence_config(discord_presence, config)
                 activity_24h.set_active(bool(active_sessions))
 
-                selected_account = get_selected_account_for_presence(
-                    values,
-                    accounts,
-                    config,
-                    active_sessions,
-                )
-                selected_name = selected_account.name if selected_account else None
-                selected_seconds = get_active_username_session_seconds(
-                    tracker,
-                    selected_account.username if selected_account else "",
-                )
+                # Only compute presence data when the RPC throttle period has elapsed
+                _now_rpc = time.time()
+                if discord_presence.enabled and (
+                    _now_rpc - discord_presence._last_update >= discord_presence.update_interval_seconds
+                ):
+                    selected_account = get_selected_account_for_presence(
+                        values,
+                        accounts,
+                        config,
+                        active_sessions,
+                    )
+                    selected_name = selected_account.name if selected_account else None
+                    selected_seconds = get_active_username_session_seconds(
+                        tracker,
+                        selected_account.username if selected_account else "",
+                    )
 
-                discord_presence.update_presence(
-                    total_24h_seconds=activity_24h.get_total_last_24h(),
-                    selected_account_name=selected_name,
-                    selected_session_seconds=selected_seconds,
-                    active_sessions_count=len(active_sessions),
-                    region=config.get("current_region", "de"),
-                    total_account_playtime_seconds=(
-                        selected_account.total_playtime if selected_account else 0.0
-                    ),
-                )
+                    discord_presence.update_presence(
+                        total_24h_seconds=activity_24h.get_total_last_24h(),
+                        selected_account_name=selected_name,
+                        selected_session_seconds=selected_seconds,
+                        active_sessions_count=len(active_sessions),
+                        region=config.get("current_region", "de"),
+                        total_account_playtime_seconds=(
+                            selected_account.total_playtime if selected_account else 0.0
+                        ),
+                    )
 
                 if perf_monitor and config.get("enable_performance_monitor", True):
                     poll_interval = max(1.0, float(config.get("performance_poll_interval", 5)))
@@ -777,8 +781,9 @@ def main() -> int:
                 
                 # Update UI with region-filtered accounts
                 region_accounts = get_region_accounts(accounts, current_region)
-                window["-ACCOUNTS-"].update([account_display(a) for a in region_accounts])
-                window["-AUTO-ACCOUNTS-"].update([account_display(a) for a in region_accounts])
+                _acct_display = [account_display(a) for a in region_accounts]
+                window["-ACCOUNTS-"].update(_acct_display)
+                window["-AUTO-ACCOUNTS-"].update(_acct_display)
                 window["-SELECTED-COUNT-"].update("0 accounts selected")
 
         # Edit account
@@ -803,8 +808,9 @@ def main() -> int:
                 
                 # Update UI with region-filtered accounts
                 region_accounts = get_region_accounts(accounts, current_region)
-                window["-ACCOUNTS-"].update([account_display(a) for a in region_accounts])
-                window["-AUTO-ACCOUNTS-"].update([account_display(a) for a in region_accounts])
+                _acct_display = [account_display(a) for a in region_accounts]
+                window["-ACCOUNTS-"].update(_acct_display)
+                window["-AUTO-ACCOUNTS-"].update(_acct_display)
                 window["-SELECTED-COUNT-"].update("0 accounts selected")
 
         # Delete account
@@ -824,8 +830,9 @@ def main() -> int:
             
             # Update UI with region-filtered accounts
             region_accounts = get_region_accounts(accounts, current_region)
-            window["-ACCOUNTS-"].update([account_display(a) for a in region_accounts])
-            window["-AUTO-ACCOUNTS-"].update([account_display(a) for a in region_accounts])
+            _acct_display = [account_display(a) for a in region_accounts]
+            window["-ACCOUNTS-"].update(_acct_display)
+            window["-AUTO-ACCOUNTS-"].update(_acct_display)
             window["-SELECTED-COUNT-"].update("0 accounts selected")
 
         # Move account up
