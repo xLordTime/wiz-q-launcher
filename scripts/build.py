@@ -23,7 +23,8 @@ def build_exe():
         sys.executable,
         "-m",
         "PyInstaller",
-        "--name=Q-Launcher",
+        "--noconfirm",
+        "--name=WizQLauncher",
         "--onefile",
         "--windowed",
         "--icon=icon.ico",
@@ -32,22 +33,30 @@ def build_exe():
         "--add-data=README.md;.",
         "--hidden-import=PySimpleGUI",
         "--hidden-import=cryptography",
-        "--hidden-import=wizwalker",
+        "--hidden-import=cryptography.hazmat.primitives.kdf.scrypt",
         "--hidden-import=psutil",
         "--hidden-import=requests",
+        "--hidden-import=packaging",
+        "--hidden-import=packaging.version",
+        "--hidden-import=pypresence",
+        "--hidden-import=pystray",
+        "--hidden-import=PIL",
+        "--hidden-import=PIL.Image",
         "--hidden-import=win32gui",
         "--hidden-import=win32con",
         "--hidden-import=win32api",
+        "--hidden-import=winreg",
+        "--hidden-import=wizwalker",
         "main.py"
     ]
     
-    print("Building Q-Launcher executable...")
+    print("Building WizQLauncher executable...")
     print(f"Command: {' '.join(cmd)}")
     
     try:
         subprocess.check_call(cmd)
         print("\n✓ Build successful!")
-        print(f"Executable location: {Path('dist/Q-Launcher.exe').absolute()}")
+        print(f"Executable location: {Path('dist/WizQLauncher.exe').absolute()}")
     except subprocess.CalledProcessError as e:
         print(f"\n✗ Build failed: {e}")
         sys.exit(1)
