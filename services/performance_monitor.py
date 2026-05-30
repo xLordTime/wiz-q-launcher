@@ -61,8 +61,8 @@ class PerformanceMonitor:
             PerformanceSnapshot with current metrics, or None if error
         """
         try:
-            # Get system-wide metrics
-            cpu_percent = psutil.cpu_percent(interval=0.1)
+            # Get system-wide metrics — interval=None is non-blocking (uses delta since last call)
+            cpu_percent = psutil.cpu_percent(interval=None)
             memory_percent = psutil.virtual_memory().percent
             
             # Get Wizard101 process memory (all instances combined)

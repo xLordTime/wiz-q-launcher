@@ -431,6 +431,7 @@ def main() -> int:
     latest_update_info: Optional[dict] = None
     last_perf_snapshot_ts = 0.0
     last_stats_refresh_ts = 0.0        # throttle: update stats table every 5 s
+    last_handles_ts = 0.0              # throttle: Win32 handle enumeration every 2 s
     _update_result_queue: queue.Queue = queue.Queue()
 
     # System tray (optional — needs pystray + Pillow in requirements)
@@ -573,7 +574,7 @@ def main() -> int:
 
     while True:
         try:
-            event, values = window.read(timeout=1000)  # 1 second timeout for periodic checks
+            event, values = window.read(timeout=2000)  # 2 second timeout for periodic checks
         except Exception as e:
             logger.exception(f"CRASH in window.read(): {e}")
             sg.popup_error(f"Window Error:\n{str(e)}", title=APP_NAME)
@@ -585,13 +586,15 @@ def main() -> int:
                 _track_auto = config.get("auto_playtime_tracking", True)
                 _track_ext = _track_auto and config.get("track_without_autologin", True)
 
-                # Fetch current handles once (used for end-detection and auto-tracking)
-                current_handles: set = set()
-                if active_sessions or _track_ext:
+                # Fetch current handles — throttled to every 2 s to reduce Win32 overhead
+                current_handles: Optional[set] = None
+                now_handles = time.time()
+                if (active_sessions or _track_ext) and now_handles - last_handles_ts >= 2.0:
                     current_handles = set(get_wizard_handles_safe())
+                    last_handles_ts = now_handles
 
                 # End sessions for windows that have been closed
-                if active_sessions:
+                if active_sessions and current_handles is not None:
                     closed_handles = [h for h in active_sessions if h not in current_handles]
                     for handle in closed_handles:
                         acc_username = active_sessions.pop(handle)
@@ -615,7 +618,7 @@ def main() -> int:
                             )
 
                 # Auto-detect externally-started Wizard101 windows (track_without_autologin)
-                if _track_ext:
+                if _track_ext and current_handles is not None:
                     for h in current_handles:
                         if h not in active_sessions:
                             if _track_auto:
