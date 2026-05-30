@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 APP_NAME = "Wiz Quick-Launcher"
-APP_VERSION = "5.2.0"
+APP_VERSION = "5.2.1"
 
 # Region metadata
 REGION_META = {
