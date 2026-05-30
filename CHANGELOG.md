@@ -1,5 +1,43 @@
 # Changelog
 
+## v5.3.0 (2026-05-30) - Self-Update, Release Pipeline & Performance
+
+### ✨ New Features
+
+#### Self-Update System
+- **In-app download** — "⬇ Download Update" button downloads the new `.exe` directly inside the launcher (no browser redirect)
+- **Zero-reinstall swap** — After download, button changes to "🔄 Restart & Apply"; clicking it writes a relay batch script that waits for the current process to exit, swaps the executables, and relaunches — no manual file replacement needed
+- **Dev-mode fallback** — When running from source (not a frozen `.exe`), the button opens the GitHub Releases page in the browser instead
+
+#### GitHub Release Pipeline
+- **Automated `.exe` builds** — Pushing a `v*` tag triggers a GitHub Actions workflow (`windows-latest`, Python 3.11, PyInstaller `--onefile --windowed`) and produces `WizQLauncher-{tag}.exe`
+- **Auto-published releases** — `softprops/action-gh-release` creates the GitHub Release, uploads the executable as a release asset, and generates release notes automatically
+- **Pre-release detection** — Tags containing `alpha`, `beta`, or `rc` are automatically marked as pre-releases
+
+### ⚡ Performance Improvements
+- **psutil CPU fix** — `cpu_percent(interval=0.1)` caused a 100 ms main-thread sleep every poll cycle; changed to `interval=None` (non-blocking)
+- **Win32 handle throttle** — `get_wizard_handles_safe()` now runs at most once every 2 s (was every 1 s tick)
+- **Event-loop timeout** — `window.read()` timeout increased from 1 000 ms to 2 000 ms, halving idle CPU wake-ups
+- **Discord RPC gating** — `update_presence()` and `get_total_last_24h()` are now skipped when RPC is disabled or the update interval has not elapsed; previously called on every tick regardless
+- **Async Discord webhook** — All `requests.post` webhook calls moved to daemon threads; no more main-thread freeze when the webhook is slow or unreachable
+- **Display list dedup** — Account display list for the launch/auto-login selectors is now built once per event and reused
+- **LogViewer skip** — `_reload_from_file()` now does a `stat().st_size` check before opening the file; skips entirely when nothing has changed
+
+### 🔧 Improvements
+- `sync_discord_presence_config()` removed from the per-tick TIMEOUT handler; only called at startup and on Save Settings
+- All app icons (window, taskbar, system tray) now resolve `icon.ico` from `sys._MEIPASS` (frozen) or project root (dev), with a drawn fallback
+- `issue_reporter.py` default `github_repo` updated to `xLordTime/wiz-q-launcher`
+
+### 🐛 Bug Fixes
+- **Unbound `exc` in download handler** — `sg.popup(f"... {exc}")` was outside any `except` block; removed
+- **Icon not shown in frozen `.exe`** — `resolve_icon_path()` used `Path.resolve()` (CWD-relative) which breaks when running as a bundled executable; now searches `sys._MEIPASS` and the executable directory first
+
+### 📦 Build
+- PyInstaller hidden imports updated: `cryptography.hazmat.primitives.kdf.scrypt`, `packaging`, `packaging.version`, `pypresence`, `pystray`, `PIL`, `PIL.Image`, `winreg`
+- Output name changed from `Q-Launcher` to `WizQLauncher` for consistency
+
+---
+
 ## v5.2.0 (2026-05-29) - Discord, Tray, Playtime & UI Overhaul
 
 ### ✨ New Features

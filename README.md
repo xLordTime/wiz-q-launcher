@@ -1,8 +1,13 @@
-# Wiz Q Launcher v5.2.0
+# Wiz Q Launcher v5.3.0
 
 Open source Wizard101 launcher with quick start, multi-instance, auto-login, playtime tracking, multi-window management, and extensible wizwalker integrations.
 
 ##  Features
+
+### Auto-Update
+-  **In-app download** — "⬇ Download Update" button downloads the new `.exe` directly without opening a browser
+-  **Zero-reinstall swap** — After download, one click writes a relay script, swaps the executables, and relaunches automatically
+-  **GitHub Release pipeline** — Every `v*` tag triggers a GitHub Actions build that produces and publishes `WizQLauncher-{tag}.exe`
 
 ### Core Launcher
 -  **Quicklaunch** - Start instance instantly with one click
@@ -68,7 +73,7 @@ Open source Wizard101 launcher with quick start, multi-instance, auto-login, pla
 ## Download
 
 **Pre-built Executable** (no Python required):
-- Download `Q-Launcher.exe` from the [Releases](https://github.com/oliwi/q-launcher/releases) page
+- Download `WizQLauncher.exe` from the [Releases](https://github.com/xLordTime/wiz-q-launcher/releases) page
 - Run directly - no installation needed
 - All dependencies included
 
@@ -99,8 +104,8 @@ pip install -r requirements.txt
 ### Option 3: Build Your Own Executable
 ```bash
 # After installing from source
-python build.py
-# Executable will be in dist/Q-Launcher.exe
+python scripts/build.py
+# Executable will be in dist/WizQLauncher.exe
 ```
 
 ## Quick Start
@@ -234,6 +239,7 @@ MIT License - See LICENSE file for details
 
 ## Version History
 
+- **v5.3.0** (2026-05-30) - Self-update system, automated `.exe` release pipeline, performance improvements
 - **v5.2.0** (2026-05-29) - Discord integration, system tray, 10 themes, playtime overhaul, UI improvements
 - **v5.1.0** (2026-03-15) - Version alignment and release numbering cleanup
 - **v0.4.0** (2026-02-16) - Extensions system, Wizwall, borderless windows, region-specific accounts, .exe builds
