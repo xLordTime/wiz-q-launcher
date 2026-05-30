@@ -1170,7 +1170,6 @@ def main() -> int:
                     )
             else:
                 _start_download_update()
-                sg.popup(f"Could not open update page: {exc}", title=APP_NAME)
 
         # ================== SETTINGS: CHANGE MASTER PASSWORD ==================
         if event == "-CHANGE-PASSWORD-":

@@ -12,7 +12,9 @@ as ``notify_fn``; the tray callbacks are then picked up in the normal event loop
 """
 from __future__ import annotations
 
+import sys
 import threading
+from pathlib import Path
 from typing import Callable, Optional
 
 try:
@@ -24,21 +26,45 @@ except ImportError:
     TRAY_AVAILABLE = False
 
 
+def _get_icon_path() -> Optional[Path]:
+    """Resolve icon.ico from the bundled resources (frozen) or project root (dev)."""
+    # PyInstaller frozen: files are extracted to sys._MEIPASS
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        p = Path(sys._MEIPASS) / "icon.ico"
+        if p.exists():
+            return p
+    # Dev mode: walk up from this file to the project root
+    for parent in Path(__file__).parents:
+        p = parent / "icon.ico"
+        if p.exists():
+            return p
+    return None
+
+
 # ── event keys posted back to the PySimpleGUI window ──────────────────────────
 RESTORE_EVENT = "-TRAY-RESTORE-"
 EXIT_EVENT = "-TRAY-EXIT-"
 
 
-def _make_default_icon(size: int = 64) -> "Image.Image":
-    """Draw a simple wizard-hat icon for the system tray."""
+def _make_tray_icon() -> "Image.Image":
+    """Load icon.ico for the system tray, falling back to a drawn placeholder."""
+    icon_path = _get_icon_path()
+    if icon_path is not None:
+        try:
+            img = Image.open(icon_path)
+            img = img.convert("RGBA")
+            img = img.resize((64, 64), Image.LANCZOS)
+            return img
+        except Exception:
+            pass
+    # Fallback: draw a simple wizard-hat
+    size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Hat body (upward triangle)
     draw.polygon(
         [(size // 2, 2), (4, size - 10), (size - 4, size - 10)],
         fill="#238636",
     )
-    # Hat brim
     draw.rectangle([2, size - 12, size - 2, size - 2], fill="#1c6ea4")
     return img
 
@@ -85,7 +111,7 @@ class TrayIcon:
             )
             self._icon = pystray.Icon(
                 "wiz-q-launcher",
-                _make_default_icon(),
+                _make_tray_icon(),
                 self._title,
                 menu,
             )
