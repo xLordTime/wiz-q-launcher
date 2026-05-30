@@ -3,6 +3,7 @@
 from typing import List, Optional
 from pathlib import Path
 import logging
+import tkinter as _tk
 
 import PySimpleGUI as sg
 
@@ -149,6 +150,47 @@ def apply_theme(config: dict) -> None:
     sg.theme(selected)
 
 
+def _get_screen_height() -> int:
+    """Return the primary monitor's height in pixels (no visible window created)."""
+    try:
+        root = _tk.Tk()
+        root.withdraw()
+        h = root.winfo_screenheight()
+        root.destroy()
+        return h
+    except Exception:
+        return 768  # safe fallback
+
+
+def bind_mousewheel_scroll(window: sg.Window) -> None:
+    """
+    Enable mousewheel scrolling for every scrollable Column in *window*.
+
+    Walks up the tkinter widget tree from the cursor position to find the
+    nearest Canvas (which backs every scrollable Column) and scrolls it.
+    Must be called *after* ``window.finalize()`` / ``window.read()``.
+    """
+    try:
+        def _on_wheel(event: _tk.Event) -> None:
+            widget = event.widget
+            while widget is not None:
+                try:
+                    cls = widget.winfo_class()
+                except Exception:
+                    break
+                if cls == "Canvas":
+                    try:
+                        widget.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                    except Exception:
+                        pass
+                    return
+                widget = getattr(widget, "master", None)
+
+        window.TKroot.bind_all("<MouseWheel>", _on_wheel)
+    except Exception:
+        pass
+
+
 def resolve_icon_path(config: dict) -> Optional[str]:
     """
     Resolve an icon path for the main window.
@@ -266,6 +308,8 @@ def build_region_tab(config: dict, region_code: str) -> List:
                 size=(40, 1)
             ),
             sg.FolderBrowse(key=f"-BROWSE-{region_code.upper()}-"),
+            sg.Button("🔍 Auto-Detect", key=f"-AUTO-DETECT-{region_code.upper()}-",
+                      tooltip="Scan common install directories and registry for Wizard101"),
         ],
         [
             sg.Text("Login Server:"),
@@ -869,7 +913,7 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
     region_accounts = [acc for acc in accounts if acc.region == current_region]
     account_list = [account_display(acc) for acc in region_accounts]
 
-    # Generate playtime statistics (for all accounts, will show region-filtered in UI)
+    # Generate playtime statistics (lightweight – no I/O)
     tracker = PlaytimeTracker()
     stats_list = tracker.get_accounts_stats_sorted(region_accounts, sort_by="playtime")
     
@@ -881,6 +925,26 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
             log_viewer = LogViewer(Path(log_file_path))
         except Exception as e:
             logging.getLogger("ui").warning(f"Could not initialize log viewer: {e}")
+
+    # ── Adaptive sizing ────────────────────────────────────────────────────
+    screen_h = _get_screen_height()
+    # Leave room for taskbar (~40px), title bar (~30px), tab bar (~30px), status bar (~25px)
+    tab_h = max(380, screen_h - 170)
+    win_h = max(480, min(720, screen_h - 80))
+
+    def _scroll_col(tab_layout: list, key: str) -> list:
+        """Wrap a tab layout in a vertically-scrollable, horizontally-expanding column."""
+        return [[
+            sg.Column(
+                tab_layout,
+                scrollable=True,
+                vertical_scroll_only=True,
+                expand_x=True,
+                expand_y=True,
+                size=(870, tab_h),
+                key=key,
+            )
+        ]]
 
     # Build main window layout
     layout = [
@@ -907,17 +971,19 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
             sg.TabGroup(
                 [
                     [
-                        sg.Tab("Launch", build_launch_tab(config, account_list), key="-TAB-LAUNCH-"),
-                        sg.Tab("Accounts", build_accounts_tab(account_list), key="-TAB-ACCOUNTS-"),
-                        sg.Tab("Extensions", build_extensions_tab(config), key="-TAB-EXTENSIONS-"),
-                        sg.Tab("Regions", build_regions_tab(config), key="-TAB-REGIONS-"),
-                        sg.Tab("Tools", build_tools_tab(), key="-TAB-TOOLS-"),
-                        sg.Tab("Performance", build_performance_tab(config.get("enable_performance_monitor", True)), key="-TAB-PERFORMANCE-"),
-                        sg.Tab("Stats", build_stats_tab(stats_list), key="-TAB-STATS-"),
-                        sg.Tab("Settings", build_settings_tab(config), key="-TAB-SETTINGS-"),
-                        sg.Tab("Logs", build_logs_tab(log_viewer), key="-TAB-LOGS-"),
+                        sg.Tab("Launch",      _scroll_col(build_launch_tab(config, account_list),    "-SCROLL-LAUNCH-"),      key="-TAB-LAUNCH-"),
+                        sg.Tab("Accounts",    _scroll_col(build_accounts_tab(account_list),           "-SCROLL-ACCOUNTS-"),    key="-TAB-ACCOUNTS-"),
+                        sg.Tab("Extensions",  _scroll_col(build_extensions_tab(config),               "-SCROLL-EXTENSIONS-"),  key="-TAB-EXTENSIONS-"),
+                        sg.Tab("Regions",     _scroll_col(build_regions_tab(config),                  "-SCROLL-REGIONS-"),     key="-TAB-REGIONS-"),
+                        sg.Tab("Tools",       _scroll_col(build_tools_tab(),                          "-SCROLL-TOOLS-"),       key="-TAB-TOOLS-"),
+                        sg.Tab("Performance", _scroll_col(build_performance_tab(config.get("enable_performance_monitor", True)), "-SCROLL-PERF-"), key="-TAB-PERFORMANCE-"),
+                        sg.Tab("Stats",       _scroll_col(build_stats_tab(stats_list),                "-SCROLL-STATS-"),       key="-TAB-STATS-"),
+                        sg.Tab("Settings",    _scroll_col(build_settings_tab(config),                 "-SCROLL-SETTINGS-"),    key="-TAB-SETTINGS-"),
+                        sg.Tab("Logs",        _scroll_col(build_logs_tab(log_viewer),                 "-SCROLL-LOGS-"),        key="-TAB-LOGS-"),
                     ]
-                ]
+                ],
+                expand_x=True,
+                expand_y=True,
             )
         ],
         
@@ -926,7 +992,12 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
     ]
 
     icon_path = resolve_icon_path(config)
-    _win_kwargs: dict = {"finalize": True, "icon": icon_path}
+    _win_kwargs: dict = {
+        "finalize": True,
+        "icon": icon_path,
+        "resizable": True,
+        "size": (900, win_h),
+    }
     if config.get("save_window_state", False):
         wx = config.get("window_x")
         wy = config.get("window_y")
@@ -934,14 +1005,16 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
             _win_kwargs["location"] = (int(wx), int(wy))
     window = sg.Window(APP_NAME, layout, **_win_kwargs)
     
+    # ── Expand the TabGroup so it fills all space when resized ──────────
+    window["-SCROLL-LAUNCH-"].expand(True, True, True)
+
     # ================== KEYBOARD SHORTCUTS ==================
-    # Bind keyboard shortcuts to the window
-    window.bind('<F1>', 'F1')      # Quicklaunch
-    window.bind('<F2>', 'F2')      # Multi-Instance
-    window.bind('<F3>', 'F3')      # Auto-Login
-    window.bind('<F4>', 'F4')      # Minimize to tray
-    window.bind('<Control-e>', 'Ctrl+E')   # Export Stats
-    window.bind('<Control-s>', 'Ctrl+S')   # Save Settings
+    window.bind('<F1>', 'F1')
+    window.bind('<F2>', 'F2')
+    window.bind('<F3>', 'F3')
+    window.bind('<F4>', 'F4')
+    window.bind('<Control-e>', 'Ctrl+E')
+    window.bind('<Control-s>', 'Ctrl+S')
 
     return window
 

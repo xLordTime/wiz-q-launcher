@@ -32,6 +32,126 @@ from security.crypto import Account
 from services.playtime_tracker import PlaytimeTracker
 
 
+# Map folder-name suffix → region code (lowercase, including parentheses)
+_FOLDER_SUFFIX_TO_REGION: dict = {
+    "(de)": "de",
+    "(fr)": "fr",
+    "(it)": "it",
+    "(gb)": "gb",
+    "(pl)": "pl",
+    "(es)": "es",
+    "(gr)": "gr",
+}
+
+# Common install root directories to scan
+_INSTALL_SEARCH_ROOTS: list = [
+    Path(r"C:\ProgramData\KingsIsle Entertainment"),
+    Path(r"C:\Program Files (x86)\KingsIsle Entertainment"),
+    Path(r"C:\Program Files\KingsIsle Entertainment"),
+]
+
+
+def find_wiz_installs() -> dict:
+    """
+    Scan common directories and the Windows registry for Wizard101 installs.
+
+    Returns a dict ``{region_code: install_path_str}`` for each found region.
+    Verifies that ``Bin\\WizardGraphicalClient.exe`` exists before including
+    a candidate.
+    """
+    found: dict = {}
+
+    # ── 1. File-system scan ───────────────────────────────────────────────
+    for root in _INSTALL_SEARCH_ROOTS:
+        if not root.exists():
+            continue
+        try:
+            for entry in root.iterdir():
+                if not entry.is_dir():
+                    continue
+                name_lower = entry.name.lower()
+                if not name_lower.startswith("wizard101"):
+                    continue
+                exe = entry / "Bin" / "WizardGraphicalClient.exe"
+                if not exe.exists():
+                    continue
+                region = "us"  # no suffix → US
+                for suffix, code in _FOLDER_SUFFIX_TO_REGION.items():
+                    if name_lower.endswith(suffix):
+                        region = code
+                        break
+                if region not in found:
+                    found[region] = str(entry)
+        except PermissionError:
+            pass
+
+    # ── 2. Registry scan ─────────────────────────────────────────────────
+    if winreg is not None:
+        _REG_ROOTS = [
+            (winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+            (winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+            (winreg.HKEY_CURRENT_USER,
+             r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        ]
+        for hive, uninstall_key in _REG_ROOTS:
+            try:
+                with winreg.OpenKey(hive, uninstall_key) as uk:
+                    idx = 0
+                    while True:
+                        try:
+                            sub_key = winreg.EnumKey(uk, idx)
+                            idx += 1
+                            with winreg.OpenKey(uk, sub_key) as sk:
+                                try:
+                                    display_name = winreg.QueryValueEx(sk, "DisplayName")[0]
+                                    if "wizard101" not in display_name.lower():
+                                        continue
+                                    install_loc = winreg.QueryValueEx(sk, "InstallLocation")[0]
+                                    candidate = Path(install_loc)
+                                    exe = candidate / "Bin" / "WizardGraphicalClient.exe"
+                                    if not exe.exists():
+                                        continue
+                                    name_lower = display_name.lower()
+                                    region = "us"
+                                    for suffix, code in _FOLDER_SUFFIX_TO_REGION.items():
+                                        bare = suffix.strip("()")
+                                        if bare in name_lower:
+                                            region = code
+                                            break
+                                    if region not in found:
+                                        found[region] = str(candidate)
+                                except (FileNotFoundError, OSError):
+                                    pass
+                        except OSError:
+                            break
+            except OSError:
+                pass
+
+    return found
+
+
+def auto_detect_wiz_install(config: dict) -> bool:
+    """
+    Scan for Wizard101 installs and fill any *empty* ``region_install_*``
+    config keys.  Returns ``True`` if at least one path was newly stored.
+    """
+    found = find_wiz_installs()
+    if not found:
+        return False
+    changed = False
+    for region_code, install_path in found.items():
+        key = f"region_install_{region_code}"
+        if not config.get(key, "").strip():
+            config[key] = install_path
+            changed = True
+            logging.getLogger("launcher").info(
+                "Auto-detected Wizard101 install for %s: %s", region_code, install_path
+            )
+    return changed
+
+
 def get_wiz_install(config: dict) -> Path:
     """Get Wizard101 installation path from config or registry."""
     override_path = os.getenv("WIZ_INSTALL_OVERRIDE", "").strip()
@@ -73,10 +193,22 @@ def get_wiz_install(config: dict) -> Path:
                     winreg.QueryValueEx(key, "InstallLocation")[0]
                 ).absolute()
                 return install_location
-        except OSError as exc:
-            raise Exception("Wizard101 install not found") from exc
+        except OSError:
+            pass
 
-    raise Exception("Wizard101 install not found")
+    # Last resort: full filesystem + registry scan
+    current_region = config.get("current_region", "de")
+    scanned = find_wiz_installs()
+    if current_region in scanned:
+        return Path(scanned[current_region]).absolute()
+    # Any install is better than none
+    if scanned:
+        return Path(next(iter(scanned.values()))).absolute()
+
+    raise Exception(
+        "Wizard101 install not found. "
+        "Set the install path in Settings → Regions or click 'Auto-Detect'."
+    )
 
 
 def build_launch_args(config: dict, install_dir: Path) -> List[str]:

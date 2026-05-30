@@ -55,6 +55,7 @@ from security.crypto import (
 )
 from services.launcher import (
     WIZWALKER_AVAILABLE,
+    auto_detect_wiz_install,
     launch_with_login,
     start_instance,
     track_session_start,
@@ -63,7 +64,7 @@ from services.launcher import (
 )
 from core.logging_utils import setup_logging
 from services.playtime_tracker import PlaytimeTracker
-from app.ui import apply_theme, build_window
+from app.ui import apply_theme, build_window, bind_mousewheel_scroll
 from services.performance_monitor import PerformanceMonitor
 from integrations.discord_integration import DiscordIntegration
 from integrations.discord_presence import DEFAULT_CLIENT_ID, DiscordRichPresence, RollingActivity24h
@@ -325,7 +326,11 @@ def main() -> int:
     
     # Load configuration
     config = load_config(paths["config_file"])
-    
+
+    # Auto-detect Wizard101 installations for any region that has no path set yet
+    if auto_detect_wiz_install(config):
+        save_config(paths["config_file"], config)
+
     # Setup logging system
     setup_logging(paths["log_dir"], config)
     
@@ -420,8 +425,12 @@ def main() -> int:
         return 1
     logger = logging.getLogger("launcher")
 
+    # Enable mousewheel scrolling in all scrollable tab columns
+    bind_mousewheel_scroll(window)
+
     latest_update_info: Optional[dict] = None
     last_perf_snapshot_ts = 0.0
+    last_stats_refresh_ts = 0.0        # throttle: update stats table every 5 s
     _update_result_queue: queue.Queue = queue.Queue()
 
     # System tray (optional — needs pystray + Pillow in requirements)
@@ -647,8 +656,11 @@ def main() -> int:
                         refresh_performance_ui()
                         last_perf_snapshot_ts = now_perf
 
-                # Auto-refresh Stats table in-place (no window rebuild needed)
-                window["-STATS-TABLE-"].update(values=_stats_table_rows())
+                # Auto-refresh Stats table in-place — throttled to once every 5 s
+                now_stats = time.time()
+                if now_stats - last_stats_refresh_ts >= 5.0:
+                    window["-STATS-TABLE-"].update(values=_stats_table_rows())
+                    last_stats_refresh_ts = now_stats
 
                 # Drain async update-check results
                 _poll_update_queue()
@@ -678,6 +690,7 @@ def main() -> int:
 
                         window.close()
                         window = build_window(config, accounts)
+                        bind_mousewheel_scroll(window)
                         region_name = REGION_META[region_code]["name"]
                         window["-STATUS-"].update(f"✓ Switched to {region_name}")
                         logger.info(f"Region switched to {region_code}")
@@ -907,6 +920,7 @@ def main() -> int:
 
                 window.close()
                 window = build_window(config, accounts)
+                bind_mousewheel_scroll(window)
                 window["-STATUS-"].update("Regions updated, window refreshed")
             else:
                 window["-STATUS-"].update("Settings saved")
@@ -977,6 +991,35 @@ def main() -> int:
         for region_code in REGION_META:
             set_region_key = f"-SET-REGION-{region_code.upper()}-"
             reset_region_key = f"-RESET-{region_code.upper()}-"
+            auto_detect_key = f"-AUTO-DETECT-{region_code.upper()}-"
+
+            # Auto-detect install path for this region
+            if event == auto_detect_key:
+                from services.launcher import find_wiz_installs
+                found = find_wiz_installs()
+                install_key = f"-INSTALL-{region_code.upper()}-"
+                if region_code in found:
+                    window[install_key].update(found[region_code])
+                    config[f"region_install_{region_code}"] = found[region_code]
+                    save_config(paths["config_file"], config)
+                    window["-STATUS-"].update(
+                        f"✓ Auto-detected {REGION_META[region_code]['name']}: {found[region_code]}"
+                    )
+                    logger.info("Auto-detected install for %s: %s", region_code, found[region_code])
+                elif found:
+                    # Offer the first found install of any region
+                    first_path = next(iter(found.values()))
+                    window[install_key].update(first_path)
+                    window["-STATUS-"].update(
+                        f"⚠ No exact match for {region_code.upper()}, suggested: {first_path}"
+                    )
+                else:
+                    sg.popup(
+                        "No Wizard101 installation found.\n"
+                        "Please install Wizard101 or set the path manually.",
+                        title=APP_NAME,
+                    )
+                    window["-STATUS-"].update("Auto-detect: no install found")
             
             # Set region as current
             if event == set_region_key:
@@ -999,6 +1042,7 @@ def main() -> int:
 
                 window.close()
                 window = build_window(config, accounts)
+                bind_mousewheel_scroll(window)
                 region_name = REGION_META[region_code]["name"]
                 window["-STATUS-"].update(f"✓ Switched to {region_name}")
             
@@ -1014,6 +1058,7 @@ def main() -> int:
 
                 window.close()
                 window = build_window(config, accounts)
+                bind_mousewheel_scroll(window)
                 region_name = REGION_META[region_code]["name"]
                 window["-STATUS-"].update(f"Reset {region_name} to defaults")
 
@@ -1206,6 +1251,7 @@ def main() -> int:
 
                 window.close()
                 window = build_window(config, accounts, log_file_path=str(log_file))
+                bind_mousewheel_scroll(window)
                 window["-STATUS-"].update(f"✓ Theme changed to {new_theme}")
                 logger.info(f"Theme changed to {new_theme}")
 
