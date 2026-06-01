@@ -3,7 +3,7 @@ cryptography==42.0.8
 # wizwalker — Wizard101 scripting library (Deimos fork, development branch)
 # Used for window discovery only (no game hooks).
 # Update the URL/branch here when upgrading wizwalker.
-wizwalker @ git+https://github.com/Deimos-Wizard101/wizwalker@development
+git+https://github.com/Vindaloniak/wizwalker
 psutil==5.9.8
 requests==2.31.0
 packaging==23.2
@@ -13,5 +13,5 @@ pypresence>=4.3.0
 pystray>=0.19.0
 Pillow>=10.0.0
 # Clip & Record extension — MP4 encoding (optional; falls back to PNG frames without it)
-# opencv-python>=4.8.0
+opencv-python>=4.8.0
 
