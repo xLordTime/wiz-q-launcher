@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -206,6 +207,10 @@ class UpdateChecker:
                 dest_path = dest_dir / f"wiz-q-launcher_update_{safe_ver}.exe"
             else:
                 dest_path = dest_dir / "wiz-q-launcher_update.exe"
+            legacy_aliases = [
+                dest_dir / "wiz-q-launcher_update.exe",
+                dest_dir / "WizQLauncher_update.exe",
+            ]
 
             try:
                 response = requests.get(
@@ -227,6 +232,19 @@ class UpdateChecker:
                                 on_progress(int(downloaded * 100 / total))
 
                 on_progress(100)
+
+                for alias_path in legacy_aliases:
+                    if alias_path == dest_path:
+                        continue
+                    try:
+                        shutil.copy2(dest_path, alias_path)
+                    except Exception as alias_exc:
+                        self.logger.warning(
+                            "Could not refresh legacy update alias %s: %s",
+                            alias_path,
+                            alias_exc,
+                        )
+
                 on_complete(dest_path)
                 self.logger.info("Update downloaded to %s", dest_path)
 

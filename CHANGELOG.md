@@ -7,6 +7,7 @@
 ### 🔧 Improvements
 - **Auto-update staging behavior improved** — if `wiz-q-launcher_update.exe` is already present, the updater now offers `Restart & Apply` directly instead of downloading again
 - **Auto-update staging hardening** — staged updates now use version-specific filenames to avoid applying stale update binaries from older releases
+- **Legacy update compatibility strengthened** — updater now reads both modern and legacy staged filenames and refreshes legacy alias files after download for backward-compatible update flow
 - **Master-password recovery flow** — invalid-password unlock now offers a guided recovery path that backs up the old accounts file and continues with placeholder mode
 - **Logging initialized earlier** — startup logging now starts before Wizard101 auto-detection so launch-time diagnostics are captured in `logs/launcher.log`
 - **Cleaner log setup** — logging now creates the log directory if needed and replaces duplicate root handlers on reinitialization

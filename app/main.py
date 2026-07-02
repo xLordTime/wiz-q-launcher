@@ -31,6 +31,7 @@ import shutil
 import sys
 import time
 import webbrowser
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 from pathlib import Path
 from typing import Any, Optional
@@ -853,6 +854,62 @@ def main() -> int:
     _refresh_master_password_ui()
     _refresh_migration_ui()
 
+    def _is_legacy_stage_fresh_enough(
+        candidate: Path,
+        update_info_local: Optional[dict],
+    ) -> bool:
+        """Validate generic legacy staged files against release publish time when available."""
+        if not update_info_local:
+            return True
+
+        published_at = str(update_info_local.get("published_at", "")).strip()
+        if not published_at:
+            return True
+
+        try:
+            published_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(
+                timezone.utc
+            )
+            candidate_dt = datetime.fromtimestamp(candidate.stat().st_mtime, tz=timezone.utc)
+            # Allow small clock skew while still rejecting obviously stale legacy files.
+            return candidate_dt >= (published_dt - timedelta(minutes=10))
+        except Exception:
+            return True
+
+    def _staged_update_path(update_info_local: Optional[dict] = None) -> Optional[Path]:
+        """Find staged update binary with version-first, legacy-compatible fallback order."""
+        if not getattr(sys, "frozen", False):
+            return None
+
+        base_dir = Path(sys.executable).parent
+        if update_info_local:
+            new_ver = str(update_info_local.get("new_version", "")).strip()
+            if new_ver:
+                safe_ver = new_ver.replace("/", "_").replace("\\", "_")
+                for version_name in (
+                    f"wiz-q-launcher_update_{safe_ver}.exe",
+                    f"wiz-q-launcher_update_v{safe_ver}.exe",
+                ):
+                    version_candidate = base_dir / version_name
+                    if version_candidate.exists():
+                        return version_candidate
+
+        for legacy_name in (
+            "wiz-q-launcher_update.exe",
+            "WizQLauncher_update.exe",
+        ):
+            legacy_candidate = base_dir / legacy_name
+            if not legacy_candidate.exists():
+                continue
+            if _is_legacy_stage_fresh_enough(legacy_candidate, update_info_local):
+                return legacy_candidate
+            logger.info(
+                "Ignoring stale legacy staged update '%s' for target version %s",
+                legacy_candidate,
+                (update_info_local or {}).get("new_version", "?"),
+            )
+        return None
+
     def _apply_update_result(update_info: Optional[dict], manual: bool = False) -> None:
         """Apply the result of a (possibly async) update check to the UI."""
         nonlocal latest_update_info
@@ -860,24 +917,6 @@ def main() -> int:
         latest_update_info = update_info
         config["last_update_check"] = int(time.time())
         save_config(paths["config_file"], config)
-
-        def _staged_update_path(update_info_local: Optional[dict] = None) -> Optional[Path]:
-            if not getattr(sys, "frozen", False):
-                return None
-            base_dir = Path(sys.executable).parent
-            version_candidate = None
-            if update_info_local:
-                new_ver = str(update_info_local.get("new_version", "")).strip()
-                if new_ver:
-                    safe_ver = new_ver.replace("/", "_").replace("\\", "_")
-                    version_candidate = base_dir / f"wiz-q-launcher_update_{safe_ver}.exe"
-                    if version_candidate.exists():
-                        return version_candidate
-
-            legacy_candidate = base_dir / "wiz-q-launcher_update.exe"
-            if legacy_candidate.exists():
-                return legacy_candidate
-            return None
 
         if update_info:
             status_text = (
@@ -907,6 +946,7 @@ def main() -> int:
                 ) == "Yes":
                     _start_download_update()
         else:
+            _pending_update_path = None
             status_text = f"\u2714 Up to date (v{APP_VERSION}) | Checked: {time.strftime('%Y-%m-%d %H:%M')}"
             window["-UPDATE-STATUS-"].update(status_text, text_color="#87CEEB")
             window["-UPDATE-BANNER-"].update(visible=False)
@@ -1685,6 +1725,9 @@ def main() -> int:
             run_update_check(manual=True)
 
         if event == "-DOWNLOAD-UPDATE-":
+            if _pending_update_path is not None and not _pending_update_path.exists():
+                _pending_update_path = _staged_update_path(latest_update_info)
+
             if _pending_update_path is not None:
                 # Update already downloaded — launch relay and exit
                 ok = UpdateChecker.apply_update_on_restart(_pending_update_path)
