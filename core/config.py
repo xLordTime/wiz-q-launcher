@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 APP_NAME = "Wiz Quick-Launcher"
-APP_VERSION = "5.3.0"
+APP_VERSION = "5.4.0"
 
 # Region metadata
 REGION_META = {
@@ -39,11 +39,27 @@ DEFAULT_CONFIG = {
     "log_max_bytes": 1048576,
     "log_backup_count": 5,
     "debug_mode": False,
+
+    # Master password / unlock cache
+    "master_password_enabled": True,
+    "master_password_mode": "password",  # password, local, or placeholder
+    "master_password_secret_b64": "",
+    "master_password_secret_expires": 0,
+    "master_password_suspend_days": 7,
     
     # UI Theme
     "ui_theme": "WizDark",
     "ui_dark_theme": "WizDark",
     "ui_light_theme": "Light",
+
+    # Top-level tab visibility
+    "show_tools_tab": False,
+    "show_extensions_tab": False,
+    "show_performance_tab": False,
+
+    # Extensions sub-tabs
+    "show_extension_wizwall": True,
+    "show_extension_capture": True,
     
     # Window State
     "window_width": 900,
@@ -51,6 +67,16 @@ DEFAULT_CONFIG = {
     "window_x": None,
     "window_y": None,
     "save_window_state": True,
+
+    # Backup / restore
+    "backup_include_logs": True,
+    "backup_scope": "full",  # config, config_data, full
+    "backup_restore_scope": "full",  # config, config_data, full
+
+    # Legacy migration diagnostics
+    "migration_last_status": "unknown",  # migrated, nothing_to_migrate, error, unknown
+    "migration_last_run": 0,
+    "migration_last_detail": "No migration check run yet.",
     
     # Region visibility toggles
     "show_region_de": True,

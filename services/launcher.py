@@ -1,6 +1,8 @@
 """Launcher logic and Wizard101 instance management."""
 
 import asyncio
+import ctypes
+import ctypes.wintypes
 import logging
 import os
 import subprocess
@@ -27,9 +29,19 @@ try:
 except Exception:
     WIZWALKER_AVAILABLE = False
 
+try:
+    import psutil
+except Exception:  # pragma: no cover - psutil is an optional runtime probe here
+    psutil = None
+
 from core.config import REGISTRY_KEY
 from security.crypto import Account
 from services.playtime_tracker import PlaytimeTracker
+
+
+_USER32 = ctypes.windll.user32
+_WIZARD_WINDOW_CLASS = "Wizard Graphical Client"
+_WIZARD_PROCESS_NAME = "WizardGraphicalClient.exe"
 
 
 # Map folder-name suffix → region code (lowercase, including parentheses)
@@ -256,15 +268,68 @@ def start_instance(config: dict) -> None:
 
 def get_wizard_handles_safe() -> List[int]:
     """Safely get all active Wizard101 handles."""
-    if not WIZWALKER_AVAILABLE:
-        return []
+    handles: set[int] = set()
+
     try:
-        return list(get_all_wizard_handles())
+        if WIZWALKER_AVAILABLE:
+            handles.update(int(handle) for handle in get_all_wizard_handles())
     except Exception as exc:
         logging.getLogger("wizwalker").warning(
             "Failed to get wizard handles: %s", exc
         )
-        return []
+
+    try:
+        handles.update(_get_wizard_handles_ctypes())
+    except Exception as exc:
+        logging.getLogger("wizwalker").warning(
+            "ctypes fallback failed while enumerating Wizard101 windows: %s", exc
+        )
+
+    return sorted(handles)
+
+
+def _get_window_pid(handle: int) -> int:
+    """Return the process ID for a given window handle."""
+    pid = ctypes.wintypes.DWORD()
+    _USER32.GetWindowThreadProcessId(ctypes.wintypes.HWND(handle), ctypes.byref(pid))
+    return int(pid.value)
+
+
+def _get_wizard_handles_ctypes() -> List[int]:
+    """Enumerate Wizard101 windows via Win32 class name and process ID."""
+    found: List[int] = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
+    def _cb(hwnd: int, _: int) -> bool:
+        buf = ctypes.create_unicode_buffer(64)
+        _USER32.GetClassNameW(hwnd, buf, 64)
+        if buf.value != _WIZARD_WINDOW_CLASS:
+            return True
+
+        pid = _get_window_pid(hwnd)
+        if _is_wizard_process(pid):
+            found.append(hwnd)
+        return True
+
+    _USER32.EnumWindows(_cb, 0)
+    return found
+
+
+def _is_wizard_process(pid: int) -> bool:
+    """Verify that a PID belongs to Wizard101.
+
+    This keeps the fallback title-independent while avoiding unrelated windows
+    that might reuse the same Win32 class name.
+    """
+    if pid <= 0:
+        return False
+    if psutil is None:
+        return True
+
+    try:
+        return psutil.Process(pid).name().lower() == _WIZARD_PROCESS_NAME.lower()
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return False
 
 
 def apply_window_options(config: dict, handle: int, account: Account) -> None:

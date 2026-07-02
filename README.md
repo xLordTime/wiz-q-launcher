@@ -1,4 +1,4 @@
-# Wiz Q Launcher v5.3.0
+# Wiz Q Launcher v5.4.0
 
 Open source Wizard101 launcher with quick start, multi-instance, auto-login, playtime tracking, multi-window management, and extensible wizwalker integrations.
 
@@ -239,6 +239,7 @@ MIT License - See LICENSE file for details
 
 ## Version History
 
+- **v5.4.0** (2026-07-02) - Stability, security, migration/backup hardening, settings/log UX improvements
 - **v5.3.0** (2026-05-30) - Self-update system, automated `.exe` release pipeline, performance improvements
 - **v5.2.0** (2026-05-29) - Discord integration, system tray, 10 themes, playtime overhaul, UI improvements
 - **v5.1.0** (2026-03-15) - Version alignment and release numbering cleanup

@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased
+
+## v5.4.0 (2026-07-02) - Stability, Security, Storage & UX
+
+### 🔧 Improvements
+- **Logging initialized earlier** — startup logging now starts before Wizard101 auto-detection so launch-time diagnostics are captured in `logs/launcher.log`
+- **Cleaner log setup** — logging now creates the log directory if needed and replaces duplicate root handlers on reinitialization
+- **Crash capture** — uncaught main-thread and background-thread exceptions are now written to the launcher log
+- **Configurable tab visibility** — Tools, Extensions, and Performance tabs can now be hidden or shown from Settings, with extension sub-tabs controlled independently
+- **Pink theme added** — a new high-contrast Pink theme is available in the UI Theme selector
+- **Launch UI stretches better** — key launch controls now expand with the window instead of staying rigidly fixed
+- **Master password optional on first setup** — users can now choose password-protected accounts or a local Windows-protected secret on first run
+- **Temporary password suspension** — the current master password can be cached locally for a configured number of days and re-used without prompting until expiry
+- **Security settings UX polish** — the Settings security block now has clearer grouping and labels for startup protection, temporary unlock, and password management
+- **Live security status in Settings** — the Security block now shows current mode (password-protected, temporary unlock with expiry, or local mode) and disables suspend controls when local mode is active
+- **Local backup/restore added** — Settings now includes profile backup creation, restore-from-file, and quick-open for the backup folder
+- **Stable backup format** — backups are stored as `.wizqbackup.zip` with a manifest plus config/data/log payloads
+- **AppData profile storage** — runtime profile files now live under `%LOCALAPPDATA%/WizQLauncher` with first-run migration from legacy project/exe folders
+- **Migration hardening** — legacy data/log files are now copied into AppData even when target folders already exist, preventing partial migrations on upgrades
+- **Migration diagnostics in Settings** — explicit migration status (`migrated` / `nothing to migrate` / `error`) is now shown in Settings with last-run details
+- **Migration dry-run preview** — Settings now includes a migration dry-run action that lists pending files and logs each planned migration file
+- **Scoped backup/restore modes** — backup and restore now support `config`, `config_data`, and `full` scopes from Settings
+- **Backup integrity enforcement** — restore now validates `manifest.json`, `format_version`, and per-file SHA-256 hashes before applying changes
+- **Automatic restore rollback** — if restore fails, the launcher now automatically rolls back to a pre-restore snapshot when available
+- **Temporary unlock countdown** — security status now shows live remaining time for temporary master-password suspension
+- **Lock-now security control** — temporary cached unlock secrets can now be invalidated immediately from Settings via a dedicated lock button
+- **Placeholder master password flow** — when no master password is chosen, the launcher now uses placeholder `0` and skips password verification until a real master password is set
+- **Performance UI guard fix** — live performance refresh now checks widget existence before updating, preventing KeyErrors when the Performance tab is hidden
+- **Critical action confirmations expanded** — restore, stats reset, and master-password change now show explicit critical warnings before execution
+- **Logs UX upgrades** — Logs tab now supports one-click clipboard copy and a "last 15 minutes" quick filter
+- **Issue reporter reliability fix** — reporter runtime targets now sync with updated settings, and failed auto-reports now open a pre-filled GitHub issue fallback in browser
+- **Settings quick search** — Settings tab now includes a search field to find options by label, config key, or UI key with current value preview
+
+### 🛠️ Tracking
+- **Window tracking fallback hardened** — Wizard101 window discovery now combines wizwalker handles with a PID-verified Win32 fallback so sessions keep tracking even when the window title changes
+- **Low-overhead polling preserved** — the fallback is only used during the existing session poll cycle, keeping the performance impact minimal
+
+### 📝 Documentation
+- Added `Update-3.1.md` for the logging update plan and rollout notes
+
 ## v5.3.0 (2026-05-30) - Self-Update, Release Pipeline & Performance
 
 ### ✨ New Features

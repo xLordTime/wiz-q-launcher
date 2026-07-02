@@ -1,6 +1,7 @@
 """Log file reader and viewer for UI integration."""
 
 import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 from collections import deque
@@ -107,6 +108,29 @@ class LogViewer:
         self._reload_from_file()
         lines = list(self._line_cache)
         return [line for line in lines if module in line]
+
+    def filter_last_minutes(self, minutes: int) -> List[str]:
+        """Return lines whose parsed timestamp is within the last N minutes."""
+        self._reload_from_file()
+        lines = list(self._line_cache)
+        cutoff = datetime.now() - timedelta(minutes=max(1, int(minutes)))
+
+        filtered = []
+        for line in lines:
+            ts = self._parse_line_timestamp(line)
+            if ts is not None and ts >= cutoff:
+                filtered.append(line)
+        return filtered
+
+    def _parse_line_timestamp(self, line: str) -> Optional[datetime]:
+        """Parse leading timestamp from a log line if possible."""
+        if len(line) < 19:
+            return None
+        head = line[:19]
+        try:
+            return datetime.strptime(head, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
 
     def get_log_stats(self) -> dict:
         """

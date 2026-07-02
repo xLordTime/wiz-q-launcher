@@ -2,7 +2,6 @@ PySimpleGUI-4-foss==4.60.4.1
 cryptography==42.0.8
 # wizwalker — Wizard101 scripting library (Deimos fork, development branch)
 # Used for window discovery only (no game hooks).
-# Update the URL/branch here when upgrading wizwalker.
 git+https://github.com/Vindaloniak/wizwalker
 psutil==5.9.8
 requests==2.31.0

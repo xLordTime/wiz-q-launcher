@@ -27,6 +27,7 @@ _AVAILABLE_THEMES = [
     "Emerald",      # Forest dark · bright-green accent
     "Slate",        # Dark indigo · violet accent
     "Sunset",       # Dark maroon · warm-red accent
+    "Pink",         # Bold magenta · neon pink accent
 ]
 
 # Flat PyQt6-style theme definitions shared across all themes.
@@ -130,6 +131,16 @@ _THEME_DEFS: dict = {
         "SCROLL": "#3A1818",
         "BUTTON": ("#F5D0C0", "#C0392B"),   # Warm red
         "PROGRESS": ("#C0392B", "#1A0A0A"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
+    "Pink": {
+        "BACKGROUND": "#140813",
+        "TEXT": "#FFD6F1",
+        "INPUT": "#281026",
+        "TEXT_INPUT": "#FFF0FA",
+        "SCROLL": "#4A1744",
+        "BUTTON": ("#FFFFFF", "#E91E9B"),   # Bright pink
+        "PROGRESS": ("#FF4DB8", "#140813"),
         "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
     },
 }
@@ -280,7 +291,8 @@ def build_launch_tab(config: dict, account_list: List[str]) -> List:
                 key="-REGION-SELECT-",
                 readonly=True,
                 enable_events=True,
-                size=(35, 1)
+                size=(35, 1),
+                expand_x=True,
             ),
             sg.Button("Apply Region", key="-APPLY-REGION-"),
         ],
@@ -300,6 +312,7 @@ def build_launch_tab(config: dict, account_list: List[str]) -> List:
                 key="-AUTO-ACCOUNTS-",
                 size=(55, 6),
                 enable_events=True,  # Enable events to update counter
+                expand_x=True,
             )
         ],
         [
@@ -384,15 +397,46 @@ def build_settings_tab(config: dict) -> List:
     Returns:
         List layout for settings tab
     """
+    backup_scope = str(config.get("backup_scope", "full"))
+    if backup_scope not in ("config", "config_data", "full"):
+        backup_scope = "full"
+    restore_scope = str(config.get("backup_restore_scope", "full"))
+    if restore_scope not in ("config", "config_data", "full"):
+        restore_scope = "full"
+
+    backup_scope_options = [
+        "config",
+        "config_data",
+        "full",
+    ]
+
     return [
         [sg.Text("Global Settings", font=("Segoe UI", 11, "bold"))],
         [
+            sg.Text("Find setting/key"),
+            sg.Input("", key="-SETTINGS-SEARCH-", size=(28, 1)),
+            sg.Button("Search", key="-SETTINGS-SEARCH-BTN-"),
+            sg.Button("Clear", key="-SETTINGS-SEARCH-CLEAR-"),
+        ],
+        [
+            sg.Text(
+                "Search by label, config key, or UI key.",
+                key="-SETTINGS-SEARCH-STATUS-",
+                font=("Segoe UI", 9),
+                text_color="#9AA5B1",
+            )
+        ],
+        [
             sg.Text("Login wait seconds"),
-            sg.Input(str(config.get("login_wait_seconds", 5)), key="-WAIT-", size=(10, 1))
+            sg.Input(str(config.get("login_wait_seconds", 5)), key="-WAIT-", size=(10, 1)),
         ],
         [
             sg.Text("Window title template"),
-            sg.Input(config.get("window_title_template", "{name} ({username})"), key="-TITLE-")
+            sg.Input(
+                config.get("window_title_template", "{name} ({username})"),
+                key="-TITLE-",
+                expand_x=True,
+            ),
         ],
         [
             sg.Text("Log level"),
@@ -403,6 +447,25 @@ def build_settings_tab(config: dict) -> List:
                 readonly=True,
             ),
         ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("UI", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Text("Theme"),
+            sg.Combo(
+                _AVAILABLE_THEMES,
+                default_value=config.get("ui_theme", "WizDark"),
+                key="-THEME-",
+                readonly=True,
+                enable_events=True,
+                size=(16, 1),
+            ),
+            sg.Checkbox(
+                "Remember window position",
+                default=config.get("save_window_state", False),
+                key="-SAVE-WINDOW-STATE-",
+            ),
+        ],
+        [sg.HorizontalSeparator()],
         [sg.Text("Discord Rich Presence", font=("Segoe UI", 11, "bold"))],
         [
             sg.Checkbox(
@@ -436,6 +499,7 @@ def build_settings_tab(config: dict) -> List:
                 size=(44, 1),
                 password_char="",
                 tooltip="Paste your Discord webhook URL here",
+                expand_x=True,
             ),
         ],
         [
@@ -444,8 +508,7 @@ def build_settings_tab(config: dict) -> List:
                 default=config.get("discord_notifications", False),
                 key="-DISCORD-NOTIFY-",
             ),
-            sg.Button("Test", key="-DISCORD-WEBHOOK-TEST-", size=(6, 1),
-                      tooltip="Send a test message to the webhook URL above"),
+            sg.Button("Test", key="-DISCORD-WEBHOOK-TEST-", size=(6, 1)),
         ],
         [
             sg.Checkbox(
@@ -462,26 +525,6 @@ def build_settings_tab(config: dict) -> List:
                 "Errors",
                 default=config.get("discord_errors", False),
                 key="-DISCORD-NOTIFY-ERRORS-",
-            ),
-        ],
-        [sg.HorizontalSeparator()],
-        [
-            sg.Text("UI Theme"),
-            sg.Combo(
-                _AVAILABLE_THEMES,
-                default_value=config.get("ui_theme", "WizDark"),
-                key="-THEME-",
-                readonly=True,
-                enable_events=True,
-                size=(16, 1),
-                tooltip="Theme applies immediately",
-            ),
-        ],
-        [
-            sg.Checkbox(
-                "Remember window position",
-                default=config.get("save_window_state", False),
-                key="-SAVE-WINDOW-STATE-",
             ),
         ],
         [sg.HorizontalSeparator()],
@@ -506,6 +549,38 @@ def build_settings_tab(config: dict) -> List:
             ),
         ],
         [sg.HorizontalSeparator()],
+        [sg.Text("Storage Migration", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Text(
+                "Migration status: checking...",
+                key="-MIGRATION-STATUS-",
+                size=(70, 1),
+                text_color="#87CEEB",
+            )
+        ],
+        [
+            sg.Text(
+                str(config.get("migration_last_detail", "No migration check run yet.")),
+                key="-MIGRATION-DETAIL-",
+                size=(70, 2),
+                text_color="#9AA5B1",
+            )
+        ],
+        [
+            sg.Button("Migration Dry-Run", key="-MIGRATION-DRYRUN-"),
+        ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Tab Visibility", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Checkbox("Show Tools tab", default=config.get("show_tools_tab", False), key="-SHOW-TOOLS-TAB-"),
+            sg.Checkbox("Show Extensions tab", default=config.get("show_extensions_tab", False), key="-SHOW-EXTENSIONS-TAB-"),
+            sg.Checkbox("Show Performance tab", default=config.get("show_performance_tab", False), key="-SHOW-PERFORMANCE-TAB-"),
+        ],
+        [
+            sg.Checkbox("Show Wizwall extension", default=config.get("show_extension_wizwall", True), key="-SHOW-EXT-WIZWALL-"),
+            sg.Checkbox("Show Clip & Record extension", default=config.get("show_extension_capture", True), key="-SHOW-EXT-CAPTURE-"),
+        ],
+        [sg.HorizontalSeparator()],
         [sg.Text("Issue Reporter", font=("Segoe UI", 11, "bold"))],
         [
             sg.Text("Title"),
@@ -513,93 +588,38 @@ def build_settings_tab(config: dict) -> List:
         ],
         [
             sg.Text("Context"),
-            sg.Multiline(
-                default_text="",
-                key="-ISSUE-CONTEXT-",
-                size=(58, 5),
-            ),
+            sg.Multiline(default_text="", key="-ISSUE-CONTEXT-", size=(58, 5)),
         ],
-        [
-            sg.Button("Report Problem", key="-REPORT-ISSUE-"),
-        ],
+        [sg.Button("Report Problem", key="-REPORT-ISSUE-")],
         [sg.HorizontalSeparator()],
         [sg.Text("Region Visibility", font=("Segoe UI", 11, "bold"))],
         [
-            sg.Checkbox(
-                "Deutschland (DE)",
-                default=config.get("show_region_de", True),
-                key="-SHOW-DE-",
-                enable_events=True
-            ),
-            sg.Checkbox(
-                "United States (US)",
-                default=config.get("show_region_us", True),
-                key="-SHOW-US-",
-                enable_events=True
-            ),
+            sg.Checkbox("Deutschland (DE)", default=config.get("show_region_de", True), key="-SHOW-DE-", enable_events=True),
+            sg.Checkbox("United States (US)", default=config.get("show_region_us", True), key="-SHOW-US-", enable_events=True),
         ],
         [
-            sg.Checkbox(
-                "France (FR)",
-                default=config.get("show_region_fr", False),
-                key="-SHOW-FR-",
-                enable_events=True
-            ),
-            sg.Checkbox(
-                "Italia (IT)",
-                default=config.get("show_region_it", False),
-                key="-SHOW-IT-",
-                enable_events=True
-            ),
+            sg.Checkbox("France (FR)", default=config.get("show_region_fr", False), key="-SHOW-FR-", enable_events=True),
+            sg.Checkbox("Italia (IT)", default=config.get("show_region_it", False), key="-SHOW-IT-", enable_events=True),
         ],
         [
-            sg.Checkbox(
-                "United Kingdom (GB)",
-                default=config.get("show_region_gb", False),
-                key="-SHOW-GB-",
-                enable_events=True
-            ),
-            sg.Checkbox(
-                "Polska (PL)",
-                default=config.get("show_region_pl", False),
-                key="-SHOW-PL-",
-                enable_events=True
-            ),
+            sg.Checkbox("United Kingdom (GB)", default=config.get("show_region_gb", False), key="-SHOW-GB-", enable_events=True),
+            sg.Checkbox("Polska (PL)", default=config.get("show_region_pl", False), key="-SHOW-PL-", enable_events=True),
         ],
         [
-            sg.Checkbox(
-                "Espana (ES)",
-                default=config.get("show_region_es", False),
-                key="-SHOW-ES-",
-                enable_events=True
-            ),
-            sg.Checkbox(
-                "Ellada (GR)",
-                default=config.get("show_region_gr", False),
-                key="-SHOW-GR-",
-                enable_events=True
-            ),
+            sg.Checkbox("Espana (ES)", default=config.get("show_region_es", False), key="-SHOW-ES-", enable_events=True),
+            sg.Checkbox("Ellada (GR)", default=config.get("show_region_gr", False), key="-SHOW-GR-", enable_events=True),
         ],
         [sg.Button("Save settings")],
         [sg.HorizontalSeparator()],
         [sg.Text("Playtime Tracking", font=("Segoe UI", 11, "bold"))],
         [
-            sg.Checkbox(
-                "Track playtime automatically",
-                default=config.get("auto_playtime_tracking", True),
-                key="-AUTO-PLAYTIME-",
-            ),
-            sg.Checkbox(
-                "Track even without auto-login",
-                default=config.get("track_without_autologin", False),
-                key="-TRACK-WITHOUT-LOGIN-",
-            ),
+            sg.Checkbox("Track playtime automatically", default=config.get("auto_playtime_tracking", True), key="-AUTO-PLAYTIME-"),
+            sg.Checkbox("Track even without auto-login", default=config.get("track_without_autologin", False), key="-TRACK-WITHOUT-LOGIN-"),
         ],
         [sg.HorizontalSeparator()],
         [sg.Text("Launch Options", font=("Segoe UI", 11, "bold"))],
         [
-            sg.Text("Extra launch arguments",
-                    tooltip="Added to the Wizard101 executable command line, e.g. -nosound"),
+            sg.Text("Extra launch arguments"),
             sg.Input(
                 " ".join(str(a) for a in config.get("extra_args", [])),
                 key="-EXTRA-ARGS-",
@@ -608,7 +628,92 @@ def build_settings_tab(config: dict) -> List:
             ),
         ],
         [sg.HorizontalSeparator()],
+        [sg.Text("Backup & Restore", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Text("Backup content", size=(16, 1)),
+            sg.Combo(
+                backup_scope_options,
+                default_value=backup_scope,
+                key="-BACKUP-SCOPE-",
+                readonly=True,
+                size=(16, 1),
+            ),
+            sg.Button("Create Backup", key="-BACKUP-CREATE-"),
+            sg.Button("Open Backup Folder", key="-BACKUP-OPEN-FOLDER-"),
+        ],
+        [
+            sg.Text("Restore file", size=(12, 1)),
+            sg.Input("", key="-BACKUP-RESTORE-FILE-", size=(42, 1)),
+            sg.FileBrowse(
+                "Browse",
+                target="-BACKUP-RESTORE-FILE-",
+                file_types=(("WizQ Backups", "*.wizqbackup.zip"), ("ZIP", "*.zip"), ("All Files", "*.*")),
+            ),
+            sg.Button("Restore Backup", key="-BACKUP-RESTORE-"),
+        ],
+        [
+            sg.Text("Restore scope", size=(16, 1)),
+            sg.Combo(
+                backup_scope_options,
+                default_value=restore_scope,
+                key="-BACKUP-RESTORE-SCOPE-",
+                readonly=True,
+                size=(16, 1),
+            ),
+        ],
+        [
+            sg.Text(
+                "Modes: config | config_data | full (includes logs).",
+                font=("Segoe UI", 9),
+                text_color="#9AA5B1",
+            )
+        ],
+        [sg.HorizontalSeparator()],
         [sg.Text("Security", font=("Segoe UI", 11, "bold"))],
+        [
+            sg.Text(
+                "Control how account unlock works at startup.",
+                font=("Segoe UI", 9, "italic"),
+                text_color="#9AA5B1",
+            )
+        ],
+        [
+            sg.Checkbox(
+                "Require master password on startup",
+                default=config.get("master_password_enabled", True),
+                key="-MASTER-PW-ENABLED-",
+            ),
+        ],
+        [
+            sg.Text(
+                "Status: checking...",
+                key="-MASTER-PW-STATUS-",
+                font=("Segoe UI", 9, "bold"),
+                text_color="#87CEEB",
+            )
+        ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Temporary Unlock", font=("Segoe UI", 10, "bold"))],
+        [
+            sg.Text("Remember unlock for", size=(16, 1)),
+            sg.Input(
+                str(config.get("master_password_suspend_days", 7)),
+                key="-MASTER-PW-DAYS-",
+                size=(6, 1),
+            ),
+            sg.Text("day(s)", size=(8, 1)),
+            sg.Button("Suspend Password", key="-MASTER-PW-SUSPEND-"),
+            sg.Button("Lock Now", key="-MASTER-PW-LOCK-NOW-"),
+        ],
+        [
+            sg.Text(
+                "Uses Windows local protection and expires automatically.",
+                font=("Segoe UI", 9),
+                text_color="#9AA5B1",
+            )
+        ],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Password Management", font=("Segoe UI", 10, "bold"))],
         [
             sg.Button(
                 "Change Master Password",
@@ -729,6 +834,8 @@ def build_logs_tab(log_viewer: Optional[LogViewer] = None) -> List:
                         readonly=True,
                         enable_events=True,
                         size=(15, 1)),
+                sg.Button("Last 15 min", key="-LOG-LAST15-"),
+                sg.Button("Copy", key="-LOG-COPY-"),
             ],
             [
                 sg.Multiline(
@@ -854,13 +961,22 @@ def build_wizwall_tab(config: dict) -> List:
 
 def build_extensions_tab(config: dict) -> List:
     """Build Extensions tab containing extension sub-tabs."""
+    extension_tabs = []
+    if config.get("show_extension_wizwall", True):
+        extension_tabs.append(sg.Tab("Wizwall", build_wizwall_tab(config), key="-TAB-WIZWALL-"))
+    if config.get("show_extension_capture", True):
+        extension_tabs.append(sg.Tab("Clip & Record", build_capture_tab(config), key="-TAB-CAPTURE-"))
+
+    if not extension_tabs:
+        return [
+            [sg.Text("No extensions enabled.", font=("Segoe UI", 11, "bold"))],
+            [sg.Text("Enable at least one extension in Settings to show this tab.")],
+        ]
+
     return [
         [
             sg.TabGroup(
-                [[
-                    sg.Tab("Wizwall", build_wizwall_tab(config), key="-TAB-WIZWALL-"),
-                    sg.Tab("Clip & Record", build_capture_tab(config), key="-TAB-CAPTURE-"),
-                ]],
+                [extension_tabs],
                 key="-EXTENSIONS-TABGROUP-",
             )
         ]
@@ -1062,7 +1178,34 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
             )
         ]]
 
+    def _tab_visible(key: str, default: bool = True) -> bool:
+        return bool(config.get(key, default))
+
     # Build main window layout
+    show_extensions_tab = _tab_visible("show_extensions_tab", config.get("enable_extensions", False))
+    show_tools_tab = _tab_visible("show_tools_tab", False)
+    show_performance_tab = _tab_visible("show_performance_tab", config.get("enable_performance_monitor", True))
+
+    tabs = [
+        sg.Tab("Launch",      _scroll_col(build_launch_tab(config, account_list),    "-SCROLL-LAUNCH-"),      key="-TAB-LAUNCH-"),
+        sg.Tab("Accounts",    _scroll_col(build_accounts_tab(account_list),           "-SCROLL-ACCOUNTS-"),    key="-TAB-ACCOUNTS-"),
+        sg.Tab("Regions",     _scroll_col(build_regions_tab(config),                  "-SCROLL-REGIONS-"),     key="-TAB-REGIONS-"),
+        sg.Tab("Stats",       _scroll_col(build_stats_tab(stats_list),                "-SCROLL-STATS-"),       key="-TAB-STATS-"),
+        sg.Tab("Settings",    _scroll_col(build_settings_tab(config),                 "-SCROLL-SETTINGS-"),    key="-TAB-SETTINGS-"),
+        sg.Tab("Logs",        _scroll_col(build_logs_tab(log_viewer),                 "-SCROLL-LOGS-"),        key="-TAB-LOGS-"),
+    ]
+
+    if show_extensions_tab:
+        tabs.insert(2, sg.Tab("Extensions", _scroll_col(build_extensions_tab(config), "-SCROLL-EXTENSIONS-"), key="-TAB-EXTENSIONS-"))
+
+    if show_tools_tab:
+        tools_index = 4 if show_extensions_tab else 3
+        tabs.insert(tools_index, sg.Tab("Tools", _scroll_col(build_tools_tab(), "-SCROLL-TOOLS-"), key="-TAB-TOOLS-"))
+
+    if show_performance_tab:
+        performance_index = 4 if (show_extensions_tab or show_tools_tab) else 3
+        tabs.insert(performance_index, sg.Tab("Performance", _scroll_col(build_performance_tab(config.get("enable_performance_monitor", True)), "-SCROLL-PERF-"), key="-TAB-PERFORMANCE-"))
+
     layout = [
         # Title bar with app name, version, and active region
         [sg.Text(f"{APP_NAME} {APP_VERSION} | 🎮 Active: {region_name.upper()}", font=("Segoe UI", 14, "bold"))],
@@ -1086,17 +1229,7 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
         [
             sg.TabGroup(
                 [
-                    [
-                        sg.Tab("Launch",      _scroll_col(build_launch_tab(config, account_list),    "-SCROLL-LAUNCH-"),      key="-TAB-LAUNCH-"),
-                        sg.Tab("Accounts",    _scroll_col(build_accounts_tab(account_list),           "-SCROLL-ACCOUNTS-"),    key="-TAB-ACCOUNTS-"),
-                        sg.Tab("Extensions",  _scroll_col(build_extensions_tab(config),               "-SCROLL-EXTENSIONS-"),  key="-TAB-EXTENSIONS-"),
-                        sg.Tab("Regions",     _scroll_col(build_regions_tab(config),                  "-SCROLL-REGIONS-"),     key="-TAB-REGIONS-"),
-                        sg.Tab("Tools",       _scroll_col(build_tools_tab(),                          "-SCROLL-TOOLS-"),       key="-TAB-TOOLS-"),
-                        sg.Tab("Performance", _scroll_col(build_performance_tab(config.get("enable_performance_monitor", True)), "-SCROLL-PERF-"), key="-TAB-PERFORMANCE-"),
-                        sg.Tab("Stats",       _scroll_col(build_stats_tab(stats_list),                "-SCROLL-STATS-"),       key="-TAB-STATS-"),
-                        sg.Tab("Settings",    _scroll_col(build_settings_tab(config),                 "-SCROLL-SETTINGS-"),    key="-TAB-SETTINGS-"),
-                        sg.Tab("Logs",        _scroll_col(build_logs_tab(log_viewer),                 "-SCROLL-LOGS-"),        key="-TAB-LOGS-"),
-                    ]
+                    tabs
                 ],
                 expand_x=True,
                 expand_y=True,

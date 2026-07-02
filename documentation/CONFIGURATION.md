@@ -76,8 +76,7 @@ egion_install_*\ instead |
 `json
 {
   \"app_name\": \"Wiz Q Launcher\",
-  \"app_version\": \"5.2.0\",
-  \"current_region\": \"de\",
+  \"app_version\": \"5.4.0\",
   
   \"show_region_de\": true,
   \"region_install_de\": \"\",

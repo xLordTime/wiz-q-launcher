@@ -1,12 +1,15 @@
 """Encryption and account management module."""
 
 import base64
+import ctypes
+import ctypes.wintypes
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import PySimpleGUI as sg
 from cryptography.fernet import Fernet, InvalidToken
@@ -18,6 +21,20 @@ from core.config import APP_NAME
 # Sentinel returned by change_master_password() when the user chose
 # a full reset instead of changing the password.
 MASTER_PASSWORD_RESET = "__RESET__"
+MASTER_PASSWORD_PLACEHOLDER = "0"
+AccountSecret = Union[str, bytes]
+
+
+class _DATA_BLOB(ctypes.Structure):
+    _fields_ = [
+        ("cbData", ctypes.wintypes.DWORD),
+        ("pbData", ctypes.POINTER(ctypes.c_byte)),
+    ]
+
+
+_CRYPTPROTECT_UI_FORBIDDEN = 0x1
+_CRYPT32 = ctypes.windll.crypt32
+_KERNEL32 = ctypes.windll.kernel32
 
 
 @dataclass
@@ -45,28 +62,135 @@ def derive_key(password: str, salt: bytes, iterations: int) -> bytes:
     return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
 
 
-def encrypt_accounts(password: str, accounts: List[Account]) -> dict:
+def _secret_to_bytes(secret: AccountSecret) -> bytes:
+    if isinstance(secret, bytes):
+        return secret
+    return secret.encode("utf-8")
+
+
+def _protect_secret(secret: bytes) -> str:
+    """Protect a secret with Windows DPAPI for the current user."""
+    if not secret:
+        return ""
+
+    in_blob = _DATA_BLOB()
+    secret_buffer = ctypes.create_string_buffer(secret)
+    in_blob.cbData = len(secret)
+    in_blob.pbData = ctypes.cast(secret_buffer, ctypes.POINTER(ctypes.c_byte))
+
+    out_blob = _DATA_BLOB()
+    if not _CRYPT32.CryptProtectData(
+        ctypes.byref(in_blob),
+        None,
+        None,
+        None,
+        None,
+        _CRYPTPROTECT_UI_FORBIDDEN,
+        ctypes.byref(out_blob),
+    ):
+        raise OSError("CryptProtectData failed")
+
+    try:
+        protected = ctypes.string_at(out_blob.pbData, out_blob.cbData)
+        return base64.b64encode(protected).decode("ascii")
+    finally:
+        if out_blob.pbData:
+            _KERNEL32.LocalFree(out_blob.pbData)
+
+
+def _unprotect_secret(blob_b64: str) -> Optional[bytes]:
+    """Recover a DPAPI-protected secret."""
+    if not blob_b64:
+        return None
+
+    protected = base64.b64decode(blob_b64.encode("ascii"))
+    in_blob = _DATA_BLOB()
+    protected_buffer = ctypes.create_string_buffer(protected)
+    in_blob.cbData = len(protected)
+    in_blob.pbData = ctypes.cast(protected_buffer, ctypes.POINTER(ctypes.c_byte))
+
+    out_blob = _DATA_BLOB()
+    if not _CRYPT32.CryptUnprotectData(
+        ctypes.byref(in_blob),
+        None,
+        None,
+        None,
+        None,
+        _CRYPTPROTECT_UI_FORBIDDEN,
+        ctypes.byref(out_blob),
+    ):
+        return None
+
+    try:
+        return ctypes.string_at(out_blob.pbData, out_blob.cbData)
+    finally:
+        if out_blob.pbData:
+            _KERNEL32.LocalFree(out_blob.pbData)
+
+
+def _store_secret(config: dict, secret: bytes, mode: str, expires_at: int = 0) -> None:
+    config["master_password_mode"] = mode
+    config["master_password_enabled"] = mode == "password" and bool(config.get("master_password_enabled", True))
+    config["master_password_secret_b64"] = _protect_secret(secret)
+    config["master_password_secret_expires"] = int(expires_at)
+
+
+def _load_stored_secret(config: dict) -> Optional[AccountSecret]:
+    mode = str(config.get("master_password_mode", "password"))
+    secret_blob = str(config.get("master_password_secret_b64", "")).strip()
+    expires_at = int(config.get("master_password_secret_expires", 0) or 0)
+
+    if not secret_blob:
+        return None
+    if expires_at and time.time() >= expires_at:
+        config["master_password_secret_b64"] = ""
+        config["master_password_secret_expires"] = 0
+        config["master_password_enabled"] = True
+        return None
+
+    secret = _unprotect_secret(secret_blob)
+    if secret is None:
+        return None
+
+    if mode == "local":
+        return secret
+    return secret.decode("utf-8")
+
+
+def encrypt_accounts(secret: AccountSecret, accounts: List[Account]) -> dict:
     """Encrypt accounts with master password."""
-    salt = os.urandom(16)
-    iterations = 390000
-    key = derive_key(password, salt, iterations)
+    secret_bytes = _secret_to_bytes(secret)
+    if isinstance(secret, bytes):
+        key = secret_bytes
+        salt = None
+        iterations = None
+    else:
+        salt = os.urandom(16)
+        iterations = 390000
+        key = derive_key(secret, salt, iterations)
     fernet = Fernet(key)
 
     payload = [account.__dict__ for account in accounts]
     token = fernet.encrypt(json.dumps(payload).encode("utf-8"))
 
-    return {
-        "salt": base64.b64encode(salt).decode("ascii"),
-        "iterations": iterations,
+    encrypted = {
         "data": token.decode("ascii"),
+        "mode": "local" if isinstance(secret, bytes) else "password",
     }
+    if salt is not None and iterations is not None:
+        encrypted["salt"] = base64.b64encode(salt).decode("ascii")
+        encrypted["iterations"] = iterations
+    return encrypted
 
 
-def decrypt_accounts(password: str, encrypted: dict) -> List[Account]:
+def decrypt_accounts(secret: AccountSecret, encrypted: dict) -> List[Account]:
     """Decrypt accounts with master password."""
-    salt = base64.b64decode(encrypted["salt"].encode("ascii"))
-    iterations = int(encrypted.get("iterations", 390000))
-    key = derive_key(password, salt, iterations)
+    if isinstance(secret, bytes):
+        key = secret
+    else:
+        salt = base64.b64decode(encrypted["salt"].encode("ascii"))
+        iterations = int(encrypted.get("iterations", 390000))
+        key = derive_key(secret, salt, iterations)
     fernet = Fernet(key)
 
     payload = fernet.decrypt(encrypted["data"].encode("ascii"))
@@ -74,21 +198,25 @@ def decrypt_accounts(password: str, encrypted: dict) -> List[Account]:
     return [Account(**item) for item in accounts]
 
 
-def load_accounts(accounts_file: Path, password: str) -> List[Account]:
+def load_accounts(accounts_file: Path, secret: AccountSecret) -> List[Account]:
     """Load encrypted accounts from file."""
     if not accounts_file.exists():
         return []
 
     with accounts_file.open("r", encoding="utf-8") as handle:
         encrypted = json.load(handle)
-    return decrypt_accounts(password, encrypted)
+
+    if isinstance(encrypted, list):
+        return [Account(**item) for item in encrypted]
+
+    return decrypt_accounts(secret, encrypted)
 
 
 def save_accounts(
-    accounts_file: Path, password: str, accounts: List[Account]
+    accounts_file: Path, secret: AccountSecret, accounts: List[Account]
 ) -> None:
     """Save accounts encrypted to file."""
-    encrypted = encrypt_accounts(password, accounts)
+    encrypted = encrypt_accounts(secret, accounts)
     with accounts_file.open("w", encoding="utf-8") as handle:
         json.dump(encrypted, handle, indent=2, sort_keys=True)
 
@@ -121,19 +249,70 @@ def prompt_master_password(first_time: bool) -> Optional[str]:
     return pw or None
 
 
-def load_master_password(accounts_file: Path) -> Optional[str]:
-    """Prompt and validate master password."""
+def load_master_password(accounts_file: Path, config: Optional[dict] = None) -> Optional[AccountSecret]:
+    """Prompt, validate, or restore the master secret used for accounts."""
     first_time = not accounts_file.exists()
+
+    if config is not None:
+        stored_secret = _load_stored_secret(config)
+        if stored_secret is not None:
+            return stored_secret
+
+    if config is not None and config.get("master_password_mode") == "local":
+        sg.popup(
+            "Master password is disabled for this launcher profile.\n"
+            "Accounts will be unlocked automatically on this Windows user.",
+            title=APP_NAME,
+        )
+        return None
+
+    if config is not None and config.get("master_password_mode") == "placeholder":
+        return MASTER_PASSWORD_PLACEHOLDER
+
+    if first_time:
+        choice = sg.popup_yes_no(
+            "Would you like to use a master password to protect your accounts?\n\n"
+            "Yes = require a password at startup\n"
+            "No = use a local Windows-protected secret instead",
+            title=APP_NAME,
+        )
+        if choice is None:
+            return None
+        if choice == "No":
+            if config is not None:
+                config["master_password_mode"] = "placeholder"
+                config["master_password_enabled"] = False
+                config["master_password_secret_b64"] = ""
+                config["master_password_secret_expires"] = 0
+            sg.popup(
+                "No master password selected.\n"
+                "Placeholder '0' is active until you set a real master password.",
+                title=APP_NAME,
+            )
+            return MASTER_PASSWORD_PLACEHOLDER
+
+        password = prompt_master_password(True)
+        if password is None:
+            return None
+        if config is not None:
+            config["master_password_mode"] = "password"
+            config["master_password_enabled"] = True
+            config["master_password_secret_b64"] = ""
+            config["master_password_secret_expires"] = 0
+        return password
+
     while True:
-        password = prompt_master_password(first_time)
+        password = prompt_master_password(False)
         if password is None:
             return None
 
-        if first_time:
-            return password
-
         try:
             load_accounts(accounts_file, password)
+            if config is not None:
+                config["master_password_mode"] = "password"
+                config["master_password_enabled"] = True
+                config["master_password_secret_b64"] = ""
+                config["master_password_secret_expires"] = 0
             return password
         except InvalidToken:
             sg.popup("Master password invalid", title=APP_NAME)
@@ -141,10 +320,35 @@ def load_master_password(accounts_file: Path) -> Optional[str]:
             sg.popup(f"Failed to unlock: {exc}", title=APP_NAME)
 
 
+def create_local_master_secret(config: Optional[dict] = None) -> bytes:
+    """Create and store a locally protected master secret (passwordless mode)."""
+    secret = Fernet.generate_key()
+    if config is not None:
+        _store_secret(config, secret, mode="local", expires_at=0)
+        config["master_password_enabled"] = False
+    return secret
+
+
+def suspend_master_password(config: dict, current_password: str, days: int) -> None:
+    """Suspend password prompts by caching the current password locally for N days."""
+    expires_at = int(time.time()) + max(1, days) * 86400
+    _store_secret(config, current_password.encode("utf-8"), mode="password", expires_at=expires_at)
+    config["master_password_enabled"] = False
+    config["master_password_suspend_days"] = max(1, days)
+
+
+def invalidate_stored_master_secret(config: dict) -> None:
+    """Invalidate any locally cached unlock secret immediately."""
+    config["master_password_secret_b64"] = ""
+    config["master_password_secret_expires"] = 0
+    config["master_password_enabled"] = True
+
+
 def change_master_password(
     accounts_file: Path,
-    current_password: str,
+    current_password: AccountSecret,
     accounts: List[Account],
+    config: Optional[dict] = None,
 ) -> Optional[str]:
     """
     Let the user change the master password.
@@ -194,16 +398,21 @@ def change_master_password(
         return MASTER_PASSWORD_RESET
 
     # ── CHANGE branch ────────────────────────────────────────────────────────
-    entered = sg.popup_get_text(
-        "Enter your CURRENT master password to continue:",
-        title=APP_NAME,
-        password_char="*",
+    skip_current_password_check = (
+        config is not None and str(config.get("master_password_mode", "password")) == "placeholder"
     )
-    if not entered:
-        return None
-    if entered != current_password:
-        sg.popup("Current password is incorrect.", title=APP_NAME)
-        return None
+
+    if not isinstance(current_password, bytes) and not skip_current_password_check:
+        entered = sg.popup_get_text(
+            "Enter your CURRENT master password to continue:",
+            title=APP_NAME,
+            password_char="*",
+        )
+        if not entered:
+            return None
+        if entered != current_password:
+            sg.popup("Current password is incorrect.", title=APP_NAME)
+            return None
 
     new_pw = sg.popup_get_text(
         "Enter NEW master password:",
@@ -236,6 +445,11 @@ def change_master_password(
         return None
 
     save_accounts(accounts_file, new_pw, accounts)
+    if config is not None:
+        config["master_password_mode"] = "password"
+        config["master_password_enabled"] = True
+        config["master_password_secret_b64"] = ""
+        config["master_password_secret_expires"] = 0
     sg.popup("Master password changed successfully.", title=APP_NAME)
     return new_pw
 
