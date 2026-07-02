@@ -190,6 +190,7 @@ class UpdateChecker:
         """
         def _worker() -> None:
             url = update_info.get("download_url", "")
+            new_version = str(update_info.get("new_version", "")).strip()
             if not url or not url.lower().endswith(".exe"):
                 on_error("No .exe download URL found in this release.")
                 return
@@ -200,7 +201,11 @@ class UpdateChecker:
                 # Dev mode — put next to the project root
                 dest_dir = Path(__file__).resolve().parent.parent
 
-            dest_path = dest_dir / "wiz-q-launcher_update.exe"
+            if new_version:
+                safe_ver = new_version.replace("/", "_").replace("\\", "_")
+                dest_path = dest_dir / f"wiz-q-launcher_update_{safe_ver}.exe"
+            else:
+                dest_path = dest_dir / "wiz-q-launcher_update.exe"
 
             try:
                 response = requests.get(

@@ -861,11 +861,23 @@ def main() -> int:
         config["last_update_check"] = int(time.time())
         save_config(paths["config_file"], config)
 
-        def _staged_update_path() -> Optional[Path]:
+        def _staged_update_path(update_info_local: Optional[dict] = None) -> Optional[Path]:
             if not getattr(sys, "frozen", False):
                 return None
-            candidate = Path(sys.executable).parent / "wiz-q-launcher_update.exe"
-            return candidate if candidate.exists() else None
+            base_dir = Path(sys.executable).parent
+            version_candidate = None
+            if update_info_local:
+                new_ver = str(update_info_local.get("new_version", "")).strip()
+                if new_ver:
+                    safe_ver = new_ver.replace("/", "_").replace("\\", "_")
+                    version_candidate = base_dir / f"wiz-q-launcher_update_{safe_ver}.exe"
+                    if version_candidate.exists():
+                        return version_candidate
+
+            legacy_candidate = base_dir / "wiz-q-launcher_update.exe"
+            if legacy_candidate.exists():
+                return legacy_candidate
+            return None
 
         if update_info:
             status_text = (
@@ -877,7 +889,7 @@ def main() -> int:
                 f"Update available: v{update_info['new_version']}",
                 visible=True,
             )
-            staged = _staged_update_path()
+            staged = _staged_update_path(update_info)
             if staged is not None:
                 _pending_update_path = staged
                 window["-DOWNLOAD-UPDATE-"].update(disabled=False, text="\U0001f504 Restart & Apply")
@@ -940,8 +952,8 @@ def main() -> int:
             return
 
         if getattr(sys, "frozen", False):
-            staged = Path(sys.executable).parent / "wiz-q-launcher_update.exe"
-            if staged.exists():
+            staged = _staged_update_path(latest_update_info)
+            if staged is not None:
                 _pending_update_path = staged
                 window["-DOWNLOAD-UPDATE-"].update(disabled=False, text="\U0001f504 Restart & Apply")
                 window["-UPDATE-STATUS-"].update(
