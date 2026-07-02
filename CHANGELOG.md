@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v5.4.1 (2026-07-02) - Update Reliability & Legacy Compatibility
+
+### 🔧 Improvements
+- **Legacy-compatible update flow** — updater now supports both versioned staged files and legacy staged filenames for seamless upgrades across older installs
+- **Stale staged-update protection** — generic legacy staged files are validated against release publish time to avoid applying outdated binaries
+- **Scope-safe update helpers** — staged-update path detection is now shared safely across all update actions, preventing runtime path lookup issues
+- **Legacy alias refresh** — after downloading a versioned staged update, legacy alias files are also refreshed to keep old updater paths working
+
 ## v5.4.0 (2026-07-02) - Stability, Security, Storage & UX
 
 ### 🔧 Improvements
