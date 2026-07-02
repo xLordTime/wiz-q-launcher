@@ -856,9 +856,16 @@ def main() -> int:
     def _apply_update_result(update_info: Optional[dict], manual: bool = False) -> None:
         """Apply the result of a (possibly async) update check to the UI."""
         nonlocal latest_update_info
+        nonlocal _pending_update_path
         latest_update_info = update_info
         config["last_update_check"] = int(time.time())
         save_config(paths["config_file"], config)
+
+        def _staged_update_path() -> Optional[Path]:
+            if not getattr(sys, "frozen", False):
+                return None
+            candidate = Path(sys.executable).parent / "wiz-q-launcher_update.exe"
+            return candidate if candidate.exists() else None
 
         if update_info:
             status_text = (
@@ -870,7 +877,16 @@ def main() -> int:
                 f"Update available: v{update_info['new_version']}",
                 visible=True,
             )
-            window["-DOWNLOAD-UPDATE-"].update(disabled=False, text="\u2B07 Download Update")
+            staged = _staged_update_path()
+            if staged is not None:
+                _pending_update_path = staged
+                window["-DOWNLOAD-UPDATE-"].update(disabled=False, text="\U0001f504 Restart & Apply")
+                window["-UPDATE-STATUS-"].update(
+                    "\u2705 Update already downloaded — click 'Restart & Apply' to install",
+                    text_color="#87CEEB",
+                )
+            else:
+                window["-DOWNLOAD-UPDATE-"].update(disabled=False, text="\u2B07 Download Update")
             if manual:
                 if sg.popup_yes_no(
                     UpdateChecker.format_release_info(update_info),
@@ -922,6 +938,18 @@ def main() -> int:
         nonlocal _pending_update_path
         if not updater or not latest_update_info:
             return
+
+        if getattr(sys, "frozen", False):
+            staged = Path(sys.executable).parent / "wiz-q-launcher_update.exe"
+            if staged.exists():
+                _pending_update_path = staged
+                window["-DOWNLOAD-UPDATE-"].update(disabled=False, text="\U0001f504 Restart & Apply")
+                window["-UPDATE-STATUS-"].update(
+                    "\u2705 Update already downloaded — click 'Restart & Apply' to install",
+                    text_color="#87CEEB",
+                )
+                return
+
         if not getattr(sys, "frozen", False):
             # Dev mode — no self-replace possible, open browser instead
             webbrowser.open(

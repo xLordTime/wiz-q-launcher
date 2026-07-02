@@ -315,6 +315,38 @@ def load_master_password(accounts_file: Path, config: Optional[dict] = None) -> 
                 config["master_password_secret_expires"] = 0
             return password
         except InvalidToken:
+            choice = sg.popup_yes_no(
+                "Master password invalid.\n\n"
+                "Do you want to reset saved accounts and continue with placeholder '0'?\n"
+                "The old accounts file will be kept as a backup.",
+                title=APP_NAME,
+            )
+            if choice == "Yes":
+                try:
+                    if accounts_file.exists():
+                        backup_name = (
+                            f"{accounts_file.stem}.invalid-{int(time.time())}{accounts_file.suffix}.bak"
+                        )
+                        backup_path = accounts_file.with_name(backup_name)
+                        accounts_file.replace(backup_path)
+                except Exception as exc:
+                    sg.popup(f"Failed to create accounts backup:\n{exc}", title=APP_NAME)
+                    continue
+
+                if config is not None:
+                    config["master_password_mode"] = "placeholder"
+                    config["master_password_enabled"] = False
+                    config["master_password_secret_b64"] = ""
+                    config["master_password_secret_expires"] = 0
+
+                sg.popup(
+                    "Accounts were reset and backed up.\n"
+                    "Launcher continues with placeholder '0'.\n"
+                    "Set a real master password in Settings afterwards.",
+                    title=APP_NAME,
+                )
+                return MASTER_PASSWORD_PLACEHOLDER
+
             sg.popup("Master password invalid", title=APP_NAME)
         except Exception as exc:
             sg.popup(f"Failed to unlock: {exc}", title=APP_NAME)

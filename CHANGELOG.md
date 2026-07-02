@@ -5,6 +5,8 @@
 ## v5.4.0 (2026-07-02) - Stability, Security, Storage & UX
 
 ### 🔧 Improvements
+- **Auto-update staging behavior improved** — if `wiz-q-launcher_update.exe` is already present, the updater now offers `Restart & Apply` directly instead of downloading again
+- **Master-password recovery flow** — invalid-password unlock now offers a guided recovery path that backs up the old accounts file and continues with placeholder mode
 - **Logging initialized earlier** — startup logging now starts before Wizard101 auto-detection so launch-time diagnostics are captured in `logs/launcher.log`
 - **Cleaner log setup** — logging now creates the log directory if needed and replaces duplicate root handlers on reinitialization
 - **Crash capture** — uncaught main-thread and background-thread exceptions are now written to the launcher log
