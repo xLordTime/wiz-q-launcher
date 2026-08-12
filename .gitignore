@@ -41,3 +41,4 @@ Thumbs.db
 change_master_password.bat
 tools/migrate_accounts.py
 todo
+./stuff

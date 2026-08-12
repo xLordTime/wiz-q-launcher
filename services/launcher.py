@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Callable, Dict, List, Set, Tuple, Optional
 
 try:
     import winreg
@@ -315,6 +315,26 @@ def _get_wizard_handles_ctypes() -> List[int]:
     return found
 
 
+def wait_for_new_handle(
+    before_handles: Set[int],
+    timeout_seconds: float,
+    poll_interval_seconds: float = 0.5,
+) -> Optional[int]:
+    """Wait for one new Wizard101 window and return its handle."""
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    while time.monotonic() < deadline:
+        for handle in get_wizard_handles_safe():
+            if handle not in before_handles:
+                return handle
+        time.sleep(poll_interval_seconds)
+    return None
+
+
+def set_window_enabled(handle: int, enabled: bool) -> None:
+    """Enable or disable input for a Wizard101 window."""
+    _USER32.EnableWindow(ctypes.wintypes.HWND(handle), bool(enabled))
+
+
 def _is_wizard_process(pid: int) -> bool:
     """Verify that a PID belongs to Wizard101.
 
@@ -352,30 +372,63 @@ def apply_window_options(config: dict, handle: int, account: Account) -> None:
 
 
 async def start_instances_with_login(
-    instance_number: int, accounts: List[Account], config: dict
+    instance_number: int,
+    accounts: List[Account],
+    config: dict,
+    on_instance_ready: Optional[Callable[[int, Account], None]] = None,
 ) -> None:
-    """Start N instances and auto-login selected accounts."""
-    start_handles = set(get_wizard_handles_safe())
+    """Start instances sequentially and auto-login each detected window."""
+    if not WIZWALKER_AVAILABLE:
+        raise RuntimeError("wizwalker is required for automatic login")
 
-    for _ in range(instance_number):
-        start_instance(config)
+    logger = logging.getLogger("launcher")
+    timeout_seconds = float(config.get("handle_detect_timeout_seconds", 15))
+    startup_wait = float(config.get("login_wait_seconds", 5))
+    selected_accounts = accounts[:instance_number]
 
-    await asyncio.sleep(float(config.get("login_wait_seconds", 5)))
+    for account in selected_accounts:
+        try:
+            before_handles = set(get_wizard_handles_safe())
+            start_instance(config)
+            handle = await asyncio.to_thread(
+                wait_for_new_handle, before_handles, timeout_seconds
+            )
+            if handle is None:
+                raise TimeoutError(
+                    f"No new Wizard101 window detected for account '{account.name}' "
+                    f"within {timeout_seconds:g} seconds"
+                )
 
-    new_handles = set(get_wizard_handles_safe()).difference(start_handles)
+            set_window_enabled(handle, False)
+            try:
+                await asyncio.sleep(startup_wait)
+                instance_login(handle, account.username, account.password)
+                apply_window_options(config, handle, account)
+            finally:
+                set_window_enabled(handle, True)
 
-    for handle, account in zip(sorted(new_handles), accounts):
-        instance_login(handle, account.username, account.password)
-        apply_window_options(config, handle, account)
+            if on_instance_ready is not None:
+                on_instance_ready(handle, account)
+        except Exception:
+            logger.exception("Failed to launch and login account '%s'", account.name)
 
 
-def launch_with_login(accounts: List[Account], count: int, config: dict) -> None:
+def launch_with_login(
+    accounts: List[Account],
+    count: int,
+    config: dict,
+    on_instance_ready: Optional[Callable[[int, Account], None]] = None,
+) -> None:
     """Start launcher thread with auto-login."""
     logger = logging.getLogger("launcher")
 
     def runner() -> None:
         try:
-            asyncio.run(start_instances_with_login(count, accounts, config))
+            asyncio.run(
+                start_instances_with_login(
+                    count, accounts, config, on_instance_ready
+                )
+            )
             logger.info("Auto-login finished for %s instances", count)
         except Exception as exc:
             logger.exception("Auto-login failed: %s", exc)

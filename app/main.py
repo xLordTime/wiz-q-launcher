@@ -27,8 +27,10 @@ Architecture:
 import logging
 import os
 import queue
+import re
 import shutil
 import sys
+import threading
 import time
 import webbrowser
 from datetime import datetime, timedelta, timezone
@@ -69,7 +71,8 @@ from services.launcher import (
 )
 from core.logging_utils import setup_logging
 from services.playtime_tracker import PlaytimeTracker
-from app.ui import apply_theme, build_window, bind_mousewheel_scroll
+from app.ui import _AVAILABLE_THEMES, apply_theme, build_window, bind_mousewheel_scroll
+from core.i18n import selected_language_code
 from services.performance_monitor import PerformanceMonitor
 from integrations.discord_integration import DiscordIntegration
 from integrations.discord_presence import DEFAULT_CLIENT_ID, DiscordRichPresence, RollingActivity24h
@@ -340,28 +343,7 @@ def start_and_track_sessions(
     """
     logger = logging.getLogger("launcher")
 
-    # Get current handles before starting
-    before_handles = set(get_wizard_handles_safe())
-
-    # Start the instances
-    launch_with_login(selected_accounts[:count], count, config)
-
-    # Poll for new handles because client startup time can vary significantly.
-    detection_timeout = float(config.get("handle_detect_timeout_seconds", 15))
-    new_handles = detect_new_handles(before_handles, count, detection_timeout)
-
-    if not new_handles:
-        logger.warning("No new Wizard101 handles detected for playtime tracking")
-        return
-
-    if len(new_handles) < count:
-        logger.warning(
-            "Detected only %s/%s new handles; tracking available sessions only",
-            len(new_handles),
-            count,
-        )
-
-    for handle, account in zip(new_handles, selected_accounts[:count]):
+    def on_instance_ready(handle: int, account: Account) -> None:
         if config.get("auto_playtime_tracking", True):
             track_session_start(tracker, handle, account.username)
         active_sessions[handle] = account.username
@@ -378,6 +360,13 @@ def start_and_track_sessions(
                 account.username,
                 config.get("current_region", "de"),
             )
+
+    launch_with_login(
+        selected_accounts[:count],
+        count,
+        config,
+        on_instance_ready=on_instance_ready,
+    )
 
 def main() -> int:
     """
@@ -439,10 +428,6 @@ def main() -> int:
         config["migration_last_detail"] = "; ".join(migration_report.get("errors", [])) or "Migration failed."
     config["migration_last_run"] = int(time.time())
 
-    # Auto-detect Wizard101 installations for any region that has no path set yet
-    if auto_detect_wiz_install(config):
-        save_config(paths["config_file"], config)
-    
     # Apply UI theme
     apply_theme(config)
 
@@ -541,6 +526,22 @@ def main() -> int:
     # Enable mousewheel scrolling in all scrollable tab columns
     bind_mousewheel_scroll(window)
 
+    # Install discovery can touch slow registry and network-backed folders.
+    # Defer it until the first window is visible on older systems.
+    def _detect_installs_in_background() -> None:
+        try:
+            detected = dict(config)
+            changed = auto_detect_wiz_install(detected)
+            window.write_event_value("-AUTO-DETECT-DONE-", (changed, detected))
+        except Exception as exc:
+            logger.warning("Background install detection failed: %s", exc)
+
+    threading.Thread(
+        target=_detect_installs_in_background,
+        name="wiz-install-detection",
+        daemon=True,
+    ).start()
+
     latest_update_info: Optional[dict] = None
     log_output_text = ""
     last_perf_snapshot_ts = 0.0
@@ -565,6 +566,8 @@ def main() -> int:
         ("Discord webhook URL", "discord_webhook_url", "-DISCORD-WEBHOOK-URL-"),
         ("Discord notifications", "discord_notifications", "-DISCORD-NOTIFY-"),
         ("Theme", "ui_theme", "-THEME-"),
+        ("Language", "language", "-LANGUAGE-"),
+        ("Tooltips", "tooltips_enabled", "-TOOLTIPS-"),
         ("Check for updates", "check_for_updates", "-CHECK-FOR-UPDATES-"),
         ("Backup scope", "backup_scope", "-BACKUP-SCOPE-"),
         ("Restore scope", "backup_restore_scope", "-BACKUP-RESTORE-SCOPE-"),
@@ -679,6 +682,8 @@ def main() -> int:
         config["discord_session_end"] = values.get("-DISCORD-NOTIFY-END-", True)
         config["discord_errors"] = values.get("-DISCORD-NOTIFY-ERRORS-", False)
         config["save_window_state"] = values.get("-SAVE-WINDOW-STATE-", False)
+        _set("language", selected_language_code(values.get("-LANGUAGE-", "English")))
+        _set("tooltips_enabled", bool(values.get("-TOOLTIPS-", False)))
         config["check_for_updates"] = values.get("-CHECK-FOR-UPDATES-", True)
         config["enable_performance_monitor"] = values.get("-ENABLE-PERF-MONITOR-", True)
         config["auto_playtime_tracking"] = values.get("-AUTO-PLAYTIME-", True)
@@ -703,6 +708,7 @@ def main() -> int:
         _set("show_performance_tab", values.get("-SHOW-PERFORMANCE-TAB-", False))
         _set("show_extension_wizwall", values.get("-SHOW-EXT-WIZWALL-", True))
         _set("show_extension_capture", values.get("-SHOW-EXT-CAPTURE-", True))
+        _set("show_extension_theme_creator", values.get("-SHOW-EXT-THEME-CREATOR-", True))
 
         for region_code in REGION_META:
             _set(f"show_region_{region_code}", values.get(f"-SHOW-{region_code.upper()}-", False))
@@ -1056,6 +1062,28 @@ def main() -> int:
         except queue.Empty:
             pass
 
+    def _launch_account_display(search: str = "") -> list[str]:
+        """Return current-region accounts filtered for the launch list."""
+        needle = str(search or "").strip().casefold()
+        region_accounts = get_region_accounts(accounts, config.get("current_region", "de"))
+        return [
+            account_display(account)
+            for account in region_accounts
+            if not needle
+            or needle in account.name.casefold()
+            or needle in account.username.casefold()
+        ]
+
+    def _update_launch_account_list(search: str = "", select_all: bool = False) -> None:
+        visible_accounts = _launch_account_display(search)
+        window["-AUTO-ACCOUNTS-"].update(
+            values=visible_accounts,
+            set_to_index=list(range(len(visible_accounts))) if select_all else [],
+        )
+        selected_count = len(visible_accounts) if select_all else 0
+        label = "account" if selected_count == 1 else "accounts"
+        window["-SELECTED-COUNT-"].update(f"{selected_count} {label} selected")
+
     if config.get("check_for_updates", True):
         now_ts = int(time.time())
         interval = int(config.get("update_check_interval", 86400))
@@ -1186,6 +1214,17 @@ def main() -> int:
         if event in (sg.WIN_CLOSED, "Exit"):
             break
 
+        if event == "-AUTO-DETECT-DONE-":
+            changed, detected_config = values.get("-AUTO-DETECT-DONE-", (False, {}))
+            if changed and isinstance(detected_config, dict):
+                for key, value in detected_config.items():
+                    if key.startswith("region_install_") and value != config.get(key):
+                        config[key] = value
+                save_config(paths["config_file"], config)
+                window["-STATUS-"].update("Wizard101 install paths detected")
+                logger.info("Background Wizard101 install detection completed")
+            continue
+
         # Apply Region - switch current region from dropdown
         if event == "-APPLY-REGION-":
             try:
@@ -1217,6 +1256,15 @@ def main() -> int:
                 window["-SELECTED-COUNT-"].update(f"{selected_count} {plural} selected")
             except Exception as e:
                 logger.exception(f"Failed to update selected count: {e}")
+
+        if event == "-ACCOUNT-SEARCH-":
+            _update_launch_account_list(values.get("-ACCOUNT-SEARCH-", ""))
+
+        if event == "-SELECT-ALL-":
+            _update_launch_account_list(values.get("-ACCOUNT-SEARCH-", ""), select_all=True)
+
+        if event == "-CLEAR-SELECTION-":
+            _update_launch_account_list(values.get("-ACCOUNT-SEARCH-", ""))
         
         if event == "Quicklaunch":
             try:
@@ -1287,8 +1335,7 @@ def main() -> int:
                 region_accounts = get_region_accounts(accounts, current_region)
                 _acct_display = [account_display(a) for a in region_accounts]
                 window["-ACCOUNTS-"].update(_acct_display)
-                window["-AUTO-ACCOUNTS-"].update(_acct_display)
-                window["-SELECTED-COUNT-"].update("0 accounts selected")
+                _update_launch_account_list(values.get("-ACCOUNT-SEARCH-", ""))
 
         # Edit account
         if event == "Edit":
@@ -1314,8 +1361,7 @@ def main() -> int:
                 region_accounts = get_region_accounts(accounts, current_region)
                 _acct_display = [account_display(a) for a in region_accounts]
                 window["-ACCOUNTS-"].update(_acct_display)
-                window["-AUTO-ACCOUNTS-"].update(_acct_display)
-                window["-SELECTED-COUNT-"].update("0 accounts selected")
+                _update_launch_account_list(values.get("-ACCOUNT-SEARCH-", ""))
 
         # Delete account
         if event == "Delete":
@@ -1336,8 +1382,7 @@ def main() -> int:
             region_accounts = get_region_accounts(accounts, current_region)
             _acct_display = [account_display(a) for a in region_accounts]
             window["-ACCOUNTS-"].update(_acct_display)
-            window["-AUTO-ACCOUNTS-"].update(_acct_display)
-            window["-SELECTED-COUNT-"].update("0 accounts selected")
+            _update_launch_account_list(values.get("-ACCOUNT-SEARCH-", ""))
 
         # Move account up
         if event == "-ACCT-UP-":
@@ -2094,6 +2139,63 @@ def main() -> int:
                     sg.popup(f"Webhook test error: {e}", title=APP_NAME)
 
         # ================== THEME TOGGLE HANDLER ==================
+        if event == "-TC-SAVE-":
+            theme_name = str(values.get("-TC-NAME-", "")).strip()
+            color_values = {
+                "BACKGROUND": values.get("-TC-BACKGROUND-", ""),
+                "TEXT": values.get("-TC-TEXT-", ""),
+                "INPUT": values.get("-TC-INPUT-", ""),
+                "TEXT_INPUT": values.get("-TC-TEXT-INPUT-", ""),
+                "SCROLL": values.get("-TC-SCROLL-", ""),
+                "BUTTON_TEXT": values.get("-TC-BUTTON-TEXT-", ""),
+                "BUTTON_BACKGROUND": values.get("-TC-BUTTON-BG-", ""),
+                "ACCENT": values.get("-TC-ACCENT-", ""),
+            }
+            if not theme_name:
+                sg.popup_error("Enter a theme name.", title=APP_NAME)
+            elif theme_name in _AVAILABLE_THEMES:
+                sg.popup_error("Built-in themes cannot be overwritten.", title=APP_NAME)
+            elif not all(re.fullmatch(r"#[0-9A-Fa-f]{6}", str(value).strip()) for value in color_values.values()):
+                sg.popup_error("Use a valid six-digit HEX color, for example #238636.", title=APP_NAME)
+            else:
+                config.setdefault("custom_themes", {})[theme_name] = {
+                    key: str(value).strip() for key, value in color_values.items()
+                }
+                config["ui_theme"] = theme_name
+                save_config(paths["config_file"], config)
+                apply_theme(config)
+                window.close()
+                window = build_window(config, accounts, log_file_path=str(log_file))
+                bind_mousewheel_scroll(window)
+                _refresh_master_password_ui()
+                _refresh_migration_ui()
+
+        if event == "-TC-APPLY-":
+            selected_theme = str(values.get("-TC-SELECT-", "")).strip()
+            if selected_theme:
+                config["ui_theme"] = selected_theme
+                save_config(paths["config_file"], config)
+                apply_theme(config)
+                window.close()
+                window = build_window(config, accounts, log_file_path=str(log_file))
+                bind_mousewheel_scroll(window)
+                _refresh_master_password_ui()
+                _refresh_migration_ui()
+
+        if event == "-TC-DELETE-":
+            selected_theme = str(values.get("-TC-SELECT-", "")).strip()
+            if selected_theme in config.get("custom_themes", {}):
+                del config["custom_themes"][selected_theme]
+                if config.get("ui_theme") == selected_theme:
+                    config["ui_theme"] = "WizDark"
+                save_config(paths["config_file"], config)
+                apply_theme(config)
+                window.close()
+                window = build_window(config, accounts, log_file_path=str(log_file))
+                bind_mousewheel_scroll(window)
+                _refresh_master_password_ui()
+                _refresh_migration_ui()
+
         # Switch between Dark and Light themes
         if event == "-THEME-":
             new_theme = values.get("-THEME-", "WizDark")

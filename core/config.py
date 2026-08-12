@@ -11,7 +11,7 @@ APP_VERSION = "5.4.0"
 # Region metadata
 REGION_META = {
     "de": {"name": "Deutsch", "server": "login-de.eu.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101(DE)"},
-    "us": {"name": "USA", "server": "login.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101"},
+    "us": {"name": "USA", "server": "login.us.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101"},
     "fr": {"name": "France", "server": "login-fr.eu.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101(FR)"},
     "it": {"name": "Italia", "server": "login-it.eu.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101(IT)"},
     "gb": {"name": "United Kingdom", "server": "login-gb.eu.wizard101.com", "port": 12000, "install": r"C:\ProgramData\KingsIsle Entertainment\Wizard101(GB)"},
@@ -27,9 +27,12 @@ DEFAULT_CONFIG = {
     "current_region": "de",
     "region": "de",
     "extra_args": [],
+    "language": "en",
+    "tooltips_enabled": False,
     
     # Launch settings
     "login_wait_seconds": 5,
+    "handle_detect_timeout_seconds": 15,
     "foreground_on_login": True,
     "set_window_title": True,
     "window_title_template": "{name} ({username})",
@@ -49,6 +52,7 @@ DEFAULT_CONFIG = {
     
     # UI Theme
     "ui_theme": "WizDark",
+    "custom_themes": {},
     "ui_dark_theme": "WizDark",
     "ui_light_theme": "Light",
 
@@ -60,6 +64,7 @@ DEFAULT_CONFIG = {
     # Extensions sub-tabs
     "show_extension_wizwall": True,
     "show_extension_capture": True,
+    "show_extension_theme_creator": True,
     
     # Window State
     "window_width": 900,
@@ -100,7 +105,7 @@ DEFAULT_CONFIG = {
     
     # Per-region servers
     "region_server_de": "login-de.eu.wizard101.com",
-    "region_server_us": "login.wizard101.com",
+    "region_server_us": "login.us.wizard101.com",
     "region_server_fr": "login-fr.eu.wizard101.com",
     "region_server_it": "login-it.eu.wizard101.com",
     "region_server_gb": "login-gb.eu.wizard101.com",

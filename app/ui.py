@@ -3,12 +3,14 @@
 from typing import List, Optional
 from pathlib import Path
 import logging
+import re
 import sys
 import tkinter as _tk
 
 import PySimpleGUI as sg
 
 from core.config import APP_NAME, APP_VERSION, REGION_META
+from core.i18n import LANGUAGE_OPTIONS, language_label, t
 from security.crypto import Account, account_display
 from services.playtime_tracker import PlaytimeTracker
 from services.log_viewer import LogViewer
@@ -25,10 +27,23 @@ _AVAILABLE_THEMES = [
     "Catppuccin",   # Dark mauve · pastel-blue accent
     "Monokai",      # Warm dark · vibrant-green accent
     "Emerald",      # Forest dark · bright-green accent
+    "Steve-Green",  # Dark mode · neon green · apple green
     "Slate",        # Dark indigo · violet accent
     "Sunset",       # Dark maroon · warm-red accent
     "Pink",         # Bold magenta · neon pink accent
 ]
+
+_THEME_COLOR_KEYS = (
+    "BACKGROUND", "TEXT", "INPUT", "TEXT_INPUT", "SCROLL",
+    "BUTTON_TEXT", "BUTTON_BACKGROUND", "ACCENT",
+)
+_HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_UI_TOOLTIPS_ENABLED = False
+
+
+def _tip(text: str) -> Optional[str]:
+    """Return a tooltip only when the user enabled tooltips."""
+    return text if _UI_TOOLTIPS_ENABLED else None
 
 # Flat PyQt6-style theme definitions shared across all themes.
 # BORDER=0 + SLIDER_DEPTH=0 + PROGRESS_DEPTH=0 remove all tkinter 3-D effects.
@@ -113,6 +128,16 @@ _THEME_DEFS: dict = {
         "PROGRESS": ("#27AE60", "#0D1A13"),
         "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
     },
+    "Steve-Green": {
+        "BACKGROUND": "#071A0B",
+        "TEXT": "#D7FF6A",
+        "INPUT": "#0D2A12",
+        "TEXT_INPUT": "#E8FFD0",
+        "SCROLL": "#285C20",
+        "BUTTON": ("#071A0B", "#8DB600"),
+        "PROGRESS": ("#39FF14", "#071A0B"),
+        "BORDER": 0, "SLIDER_DEPTH": 0, "PROGRESS_DEPTH": 0,
+    },
     "Slate": {
         "BACKGROUND": "#1A1A2E",
         "TEXT": "#E0E0FF",
@@ -156,10 +181,65 @@ def apply_theme(config: dict) -> None:
     for name, definition in _THEME_DEFS.items():
         sg.theme_add_new(name, definition)
 
+    valid_custom_names = []
+    for name, definition in config.get("custom_themes", {}).items():
+        if not isinstance(name, str) or not isinstance(definition, dict):
+            continue
+        if all(_HEX_COLOR.fullmatch(str(definition.get(key, ""))) for key in _THEME_COLOR_KEYS):
+            custom_definition = {
+                "BACKGROUND": definition["BACKGROUND"],
+                "TEXT": definition["TEXT"],
+                "INPUT": definition["INPUT"],
+                "TEXT_INPUT": definition["TEXT_INPUT"],
+                "SCROLL": definition["SCROLL"],
+                "BUTTON": (definition["BUTTON_TEXT"], definition["BUTTON_BACKGROUND"]),
+                "PROGRESS": (definition["ACCENT"], definition["BACKGROUND"]),
+                "BORDER": 0,
+                "SLIDER_DEPTH": 0,
+                "PROGRESS_DEPTH": 0,
+            }
+            sg.theme_add_new(name, custom_definition)
+            valid_custom_names.append(name)
+
     selected = config.get("ui_theme", "WizDark")
-    if selected not in _THEME_DEFS:
+    if selected not in _THEME_DEFS and selected not in valid_custom_names:
         selected = "WizDark"
     sg.theme(selected)
+
+
+def _available_themes(config: dict) -> List[str]:
+    """Return built-in themes followed by valid custom theme names."""
+    custom = config.get("custom_themes", {})
+    names = [name for name in custom if isinstance(name, str) and name.strip()]
+    return _AVAILABLE_THEMES + [name for name in names if name not in _AVAILABLE_THEMES]
+
+
+def build_theme_creator_tab(config: dict) -> List:
+    """Build the Theme-Creator extension for user-defined launcher themes."""
+    custom_themes = config.get("custom_themes", {})
+    selected = config.get("ui_theme", "WizDark")
+    selected_definition = custom_themes.get(selected, {}) if isinstance(custom_themes, dict) else {}
+
+    def color(key: str, fallback: str) -> str:
+        value = selected_definition.get(key, fallback)
+        return str(value) if _HEX_COLOR.fullmatch(str(value)) else fallback
+
+    return [
+        [sg.Text("Theme-Creator", font=("Segoe UI", 12, "bold"))],
+        [sg.Text("Create and save your own launcher theme. Use six-digit HEX colors.", font=("Segoe UI", 9, "italic"))],
+        [sg.Text("Theme name"), sg.Input(selected if selected not in _AVAILABLE_THEMES else "", key="-TC-NAME-", size=(24, 1))],
+        [sg.Text("Background", size=(18, 1)), sg.Input(color("BACKGROUND", "#0D1117"), key="-TC-BACKGROUND-", size=(12, 1))],
+        [sg.Text("Text", size=(18, 1)), sg.Input(color("TEXT", "#E6EDF3"), key="-TC-TEXT-", size=(12, 1))],
+        [sg.Text("Input background", size=(18, 1)), sg.Input(color("INPUT", "#161B22"), key="-TC-INPUT-", size=(12, 1))],
+        [sg.Text("Input text", size=(18, 1)), sg.Input(color("TEXT_INPUT", "#E6EDF3"), key="-TC-TEXT-INPUT-", size=(12, 1))],
+        [sg.Text("Scroll", size=(18, 1)), sg.Input(color("SCROLL", "#30363D"), key="-TC-SCROLL-", size=(12, 1))],
+        [sg.Text("Button text", size=(18, 1)), sg.Input(color("BUTTON_TEXT", "#FFFFFF"), key="-TC-BUTTON-TEXT-", size=(12, 1))],
+        [sg.Text("Button background", size=(18, 1)), sg.Input(color("BUTTON_BACKGROUND", "#238636"), key="-TC-BUTTON-BG-", size=(12, 1))],
+        [sg.Text("Accent", size=(18, 1)), sg.Input(color("ACCENT", "#238636"), key="-TC-ACCENT-", size=(12, 1))],
+        [sg.Button("Save Theme", key="-TC-SAVE-"), sg.Button("Apply Theme", key="-TC-APPLY-"), sg.Button("Delete Theme", key="-TC-DELETE-")],
+        [sg.Text("Saved custom themes:"), sg.Combo(_available_themes(config), default_value=selected, key="-TC-SELECT-", readonly=True, enable_events=True, size=(24, 1))],
+        [sg.Text("Built-in themes are not changed or deleted.", font=("Segoe UI", 9, "italic"), text_color="#9AA5B1")],
+    ]
 
 
 def _get_screen_height() -> int:
@@ -270,6 +350,7 @@ def build_launch_tab(config: dict, account_list: List[str]) -> List:
     """Build Launch tab layout."""
     current_region = config.get("current_region", "de")
     region_name = REGION_META.get(current_region, {}).get("name", current_region.upper())
+    tr = lambda text: t(text, config.get("language", "en"))
     
     # Build available regions list for dropdown
     available_regions = []
@@ -284,7 +365,7 @@ def build_launch_tab(config: dict, account_list: List[str]) -> List:
     return [
         [sg.Text(f"🌍 Current Region: {region_name.upper()}", font=("Segoe UI", 12, "bold"), text_color="#2C6E73")],
         [
-            sg.Text("Switch Region:"),
+            sg.Text(tr("Switch Region:")),
             sg.Combo(
                 values=[r[0] for r in available_regions],
                 default_value=default_region,
@@ -294,35 +375,42 @@ def build_launch_tab(config: dict, account_list: List[str]) -> List:
                 size=(35, 1),
                 expand_x=True,
             ),
-            sg.Button("Apply Region", key="-APPLY-REGION-"),
+            sg.Button(tr("Apply Region"), key="-APPLY-REGION-", tooltip=_tip("Switch the active Wizard101 region")),
         ],
         [
-            sg.Button("🚀 Quicklaunch (1 Instance)", key="Quicklaunch"),
-            sg.Button("🎮 Start Selected Instances", key="Start Instances"),
-            sg.Button("🔐 Start Selected + Auto Login", key="Start + Auto Login"),
+            sg.Button("🚀 Quicklaunch (1 Instance)", key="Quicklaunch", tooltip=_tip("Start one Wizard101 instance without logging in")),
+            sg.Button("🎮 Start Selected Instances", key="Start Instances", tooltip=_tip("Start one instance for every selected account")),
+            sg.Button("🔐 Start Selected + Auto Login", key="Start + Auto Login", tooltip=_tip("Start selected instances and log in automatically")),
         ],
         [
-            sg.Text("Select accounts to launch (Ctrl+Click for multiple):"),
+            sg.Text(tr("Select accounts to launch (Ctrl+Click for multiple):")),
             sg.Text("0 selected", key="-SELECTED-COUNT-", font=("Segoe UI", 9, "bold"), text_color="#2C6E73")
+        ],
+        [
+            sg.Input("", key="-ACCOUNT-SEARCH-", expand_x=True, enable_events=True,
+                     tooltip=_tip("Filter accounts by name or username")),
+            sg.Button("Select All", key="-SELECT-ALL-", tooltip=_tip("Select all accounts currently shown")),
+            sg.Button("Clear Selection", key="-CLEAR-SELECTION-", tooltip=_tip("Clear the current account selection")),
         ],
         [
             sg.Listbox(
                 values=account_list,
                 select_mode=sg.LISTBOX_SELECT_MODE_MULTIPLE,
                 key="-AUTO-ACCOUNTS-",
-                size=(55, 6),
+                size=(55, 10),
                 enable_events=True,  # Enable events to update counter
                 expand_x=True,
+                expand_y=True,
             )
         ],
         [
             sg.Checkbox(
-                "Bring window to front",
+                tr("Bring window to front"),
                 default=config.get("foreground_on_login", True),
                 key="-FOREGROUND-",
             ),
             sg.Checkbox(
-                "Set window title",
+                tr("Set window title"),
                 default=config.get("set_window_title", True),
                 key="-SETTITLE-",
             ),
@@ -346,7 +434,7 @@ def build_region_tab(config: dict, region_code: str) -> List:
             ),
             sg.FolderBrowse(key=f"-BROWSE-{region_code.upper()}-"),
             sg.Button("🔍 Auto-Detect", key=f"-AUTO-DETECT-{region_code.upper()}-",
-                      tooltip="Scan common install directories and registry for Wizard101"),
+                      tooltip=_tip("Scan common install directories and registry for Wizard101")),
         ],
         [
             sg.Text("Login Server:"),
@@ -372,17 +460,30 @@ def build_region_tab(config: dict, region_code: str) -> List:
 def build_accounts_tab(account_list: List[str]) -> List:
     """Build Accounts tab layout."""
     return [
+        [sg.Text("Account Manager", font=("Segoe UI", 13, "bold"))],
+        [sg.Text(
+            f"{len(account_list)} account(s) in the current region. Select an account to edit, reorder, or remove it.",
+            font=("Segoe UI", 9),
+            text_color="#87909A",
+        )],
         [
             sg.Listbox(
                 values=account_list,
                 key="-ACCOUNTS-",
-                size=(55, 12),
+                size=(62, 14),
                 enable_events=True,
+                expand_x=True,
+                expand_y=True,
             )
         ],
-        [sg.Button("Add"), sg.Button("Edit"), sg.Button("Delete"),
-         sg.Button("↑", key="-ACCT-UP-", tooltip="Move selected account up"),
-         sg.Button("↓", key="-ACCT-DOWN-", tooltip="Move selected account down")],
+        [
+            sg.Button("Add Account", key="Add", button_color=("white", "#238636"), tooltip=_tip("Create a new encrypted account entry")),
+            sg.Button("Edit Account", key="Edit", tooltip=_tip("Edit the selected account")),
+            sg.Button("Delete Account", key="Delete", button_color=("white", "#8B0000"), tooltip=_tip("Delete the selected account")),
+            sg.Push(),
+             sg.Button("↑", key="-ACCT-UP-", tooltip=_tip("Move selected account up")),
+             sg.Button("↓", key="-ACCT-DOWN-", tooltip=_tip("Move selected account down")),
+        ],
     ]
 
 
@@ -409,29 +510,31 @@ def build_settings_tab(config: dict) -> List:
         "config_data",
         "full",
     ]
+    language = config.get("language", "en")
+    tr = lambda text: t(text, language)
 
     return [
-        [sg.Text("Global Settings", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Global Settings"), font=("Segoe UI", 11, "bold"))],
         [
-            sg.Text("Find setting/key"),
+            sg.Text(tr("Find setting/key")),
             sg.Input("", key="-SETTINGS-SEARCH-", size=(28, 1)),
-            sg.Button("Search", key="-SETTINGS-SEARCH-BTN-"),
-            sg.Button("Clear", key="-SETTINGS-SEARCH-CLEAR-"),
+            sg.Button(tr("Search"), key="-SETTINGS-SEARCH-BTN-", tooltip=_tip("Search settings by label, config key, or UI key")),
+            sg.Button(tr("Clear"), key="-SETTINGS-SEARCH-CLEAR-", tooltip=_tip("Clear the settings search")),
         ],
         [
             sg.Text(
-                "Search by label, config key, or UI key.",
+                tr("Search by label, config key, or UI key."),
                 key="-SETTINGS-SEARCH-STATUS-",
                 font=("Segoe UI", 9),
                 text_color="#9AA5B1",
             )
         ],
         [
-            sg.Text("Login wait seconds"),
+            sg.Text(tr("Login wait seconds")),
             sg.Input(str(config.get("login_wait_seconds", 5)), key="-WAIT-", size=(10, 1)),
         ],
         [
-            sg.Text("Window title template"),
+            sg.Text(tr("Window title template")),
             sg.Input(
                 config.get("window_title_template", "{name} ({username})"),
                 key="-TITLE-",
@@ -439,7 +542,7 @@ def build_settings_tab(config: dict) -> List:
             ),
         ],
         [
-            sg.Text("Log level"),
+            sg.Text(tr("Log level")),
             sg.Combo(
                 ["DEBUG", "INFO", "WARNING", "ERROR"],
                 default_value=config.get("log_level", "INFO"),
@@ -448,11 +551,11 @@ def build_settings_tab(config: dict) -> List:
             ),
         ],
         [sg.HorizontalSeparator()],
-        [sg.Text("UI", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("UI"), font=("Segoe UI", 11, "bold"))],
         [
-            sg.Text("Theme"),
+            sg.Text(tr("Theme")),
             sg.Combo(
-                _AVAILABLE_THEMES,
+                _available_themes(config),
                 default_value=config.get("ui_theme", "WizDark"),
                 key="-THEME-",
                 readonly=True,
@@ -460,22 +563,39 @@ def build_settings_tab(config: dict) -> List:
                 size=(16, 1),
             ),
             sg.Checkbox(
-                "Remember window position",
+                tr("Remember window position"),
                 default=config.get("save_window_state", False),
                 key="-SAVE-WINDOW-STATE-",
             ),
+            sg.Checkbox(
+                "Enable tooltips",
+                default=config.get("tooltips_enabled", False),
+                key="-TOOLTIPS-",
+                tooltip=_tip("Show explanations when hovering over buttons and controls"),
+            ),
+        ],
+        [
+            sg.Text(tr("Language")),
+            sg.Combo(
+                LANGUAGE_OPTIONS,
+                default_value=language_label(language),
+                key="-LANGUAGE-",
+                readonly=True,
+                enable_events=True,
+                size=(16, 1),
+            ),
         ],
         [sg.HorizontalSeparator()],
-        [sg.Text("Discord Rich Presence", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Discord Rich Presence"), font=("Segoe UI", 11, "bold"))],
         [
             sg.Checkbox(
-                "Enable Discord Rich Presence",
+                tr("Enable Discord Rich Presence"),
                 default=config.get("discord_rich_presence", True),
                 key="-DISCORD-RPC-",
             ),
         ],
         [
-            sg.Text("RPC update interval (sec)"),
+            sg.Text(tr("RPC update interval (sec)")),
             sg.Input(
                 str(config.get("discord_rpc_update_interval", 15)),
                 key="-DISCORD-RPC-INTERVAL-",
@@ -490,48 +610,48 @@ def build_settings_tab(config: dict) -> List:
             ),
         ],
         [sg.HorizontalSeparator()],
-        [sg.Text("Discord Webhook Notifications", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Discord Webhook Notifications"), font=("Segoe UI", 11, "bold"))],
         [
-            sg.Text("Webhook URL"),
+            sg.Text(tr("Webhook URL")),
             sg.Input(
                 config.get("discord_webhook_url", ""),
                 key="-DISCORD-WEBHOOK-URL-",
                 size=(44, 1),
                 password_char="",
-                tooltip="Paste your Discord webhook URL here",
+                tooltip=_tip("Paste your Discord webhook URL here"),
                 expand_x=True,
             ),
         ],
         [
             sg.Checkbox(
-                "Enable webhook notifications",
+                tr("Enable webhook notifications"),
                 default=config.get("discord_notifications", False),
                 key="-DISCORD-NOTIFY-",
             ),
-            sg.Button("Test", key="-DISCORD-WEBHOOK-TEST-", size=(6, 1)),
+            sg.Button(tr("Test"), key="-DISCORD-WEBHOOK-TEST-", size=(6, 1)),
         ],
         [
             sg.Checkbox(
-                "Session start",
+                tr("Session start"),
                 default=config.get("discord_session_start", True),
                 key="-DISCORD-NOTIFY-START-",
             ),
             sg.Checkbox(
-                "Session end",
+                tr("Session end"),
                 default=config.get("discord_session_end", True),
                 key="-DISCORD-NOTIFY-END-",
             ),
             sg.Checkbox(
-                "Errors",
+                tr("Errors"),
                 default=config.get("discord_errors", False),
                 key="-DISCORD-NOTIFY-ERRORS-",
             ),
         ],
         [sg.HorizontalSeparator()],
-        [sg.Text("Update Checker", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Update Checker"), font=("Segoe UI", 11, "bold"))],
         [
-            sg.Button("Check for Updates", key="-CHECK-UPDATES-"),
-            sg.Button("⬇ Download Update", key="-DOWNLOAD-UPDATE-", disabled=True),
+            sg.Button(tr("Check for Updates"), key="-CHECK-UPDATES-", tooltip=_tip("Check GitHub for a newer launcher version")),
+            sg.Button(tr("⬇ Download Update"), key="-DOWNLOAD-UPDATE-", disabled=True, tooltip=_tip("Download the available launcher update")),
         ],
         [
             sg.Text(
@@ -549,7 +669,7 @@ def build_settings_tab(config: dict) -> List:
             ),
         ],
         [sg.HorizontalSeparator()],
-        [sg.Text("Storage Migration", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Storage Migration"), font=("Segoe UI", 11, "bold"))],
         [
             sg.Text(
                 "Migration status: checking...",
@@ -567,35 +687,36 @@ def build_settings_tab(config: dict) -> List:
             )
         ],
         [
-            sg.Button("Migration Dry-Run", key="-MIGRATION-DRYRUN-"),
+            sg.Button(tr("Migration Dry-Run"), key="-MIGRATION-DRYRUN-", tooltip=_tip("Preview legacy profile files that would be migrated")),
         ],
         [sg.HorizontalSeparator()],
-        [sg.Text("Tab Visibility", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Tab Visibility"), font=("Segoe UI", 11, "bold"))],
         [
-            sg.Checkbox("Show Tools tab", default=config.get("show_tools_tab", False), key="-SHOW-TOOLS-TAB-"),
-            sg.Checkbox("Show Extensions tab", default=config.get("show_extensions_tab", False), key="-SHOW-EXTENSIONS-TAB-"),
-            sg.Checkbox("Show Performance tab", default=config.get("show_performance_tab", False), key="-SHOW-PERFORMANCE-TAB-"),
+            sg.Checkbox(tr("Show Tools tab"), default=config.get("show_tools_tab", False), key="-SHOW-TOOLS-TAB-"),
+            sg.Checkbox(tr("Show Extensions tab"), default=config.get("show_extensions_tab", False), key="-SHOW-EXTENSIONS-TAB-"),
+            sg.Checkbox(tr("Show Performance tab"), default=config.get("show_performance_tab", False), key="-SHOW-PERFORMANCE-TAB-"),
         ],
         [
-            sg.Checkbox("Show Wizwall extension", default=config.get("show_extension_wizwall", True), key="-SHOW-EXT-WIZWALL-"),
-            sg.Checkbox("Show Clip & Record extension", default=config.get("show_extension_capture", True), key="-SHOW-EXT-CAPTURE-"),
+            sg.Checkbox(tr("Show Wizwall extension"), default=config.get("show_extension_wizwall", True), key="-SHOW-EXT-WIZWALL-"),
+            sg.Checkbox(tr("Show Clip & Record extension"), default=config.get("show_extension_capture", True), key="-SHOW-EXT-CAPTURE-"),
+            sg.Checkbox("Show Theme-Creator extension", default=config.get("show_extension_theme_creator", True), key="-SHOW-EXT-THEME-CREATOR-"),
         ],
         [sg.HorizontalSeparator()],
-        [sg.Text("Issue Reporter", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Issue Reporter"), font=("Segoe UI", 11, "bold"))],
         [
-            sg.Text("Title"),
+            sg.Text(tr("Title")),
             sg.Input("", key="-ISSUE-TITLE-", size=(48, 1)),
         ],
         [
-            sg.Text("Context"),
+            sg.Text(tr("Context")),
             sg.Multiline(default_text="", key="-ISSUE-CONTEXT-", size=(58, 5)),
         ],
-        [sg.Button("Report Problem", key="-REPORT-ISSUE-")],
+        [sg.Button(tr("Report Problem"), key="-REPORT-ISSUE-")],
         [sg.HorizontalSeparator()],
-        [sg.Text("Region Visibility", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Region Visibility"), font=("Segoe UI", 11, "bold"))],
         [
             sg.Checkbox("Deutschland (DE)", default=config.get("show_region_de", True), key="-SHOW-DE-", enable_events=True),
-            sg.Checkbox("United States (US)", default=config.get("show_region_us", True), key="-SHOW-US-", enable_events=True),
+            sg.Checkbox(tr("United States (US)"), default=config.get("show_region_us", True), key="-SHOW-US-", enable_events=True),
         ],
         [
             sg.Checkbox("France (FR)", default=config.get("show_region_fr", False), key="-SHOW-FR-", enable_events=True),
@@ -609,22 +730,22 @@ def build_settings_tab(config: dict) -> List:
             sg.Checkbox("Espana (ES)", default=config.get("show_region_es", False), key="-SHOW-ES-", enable_events=True),
             sg.Checkbox("Ellada (GR)", default=config.get("show_region_gr", False), key="-SHOW-GR-", enable_events=True),
         ],
-        [sg.Button("Save settings")],
+        [sg.Button(tr("Save settings"), key="Save settings", tooltip=_tip("Save all settings changes"))],
         [sg.HorizontalSeparator()],
-        [sg.Text("Playtime Tracking", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Playtime Tracking"), font=("Segoe UI", 11, "bold"))],
         [
-            sg.Checkbox("Track playtime automatically", default=config.get("auto_playtime_tracking", True), key="-AUTO-PLAYTIME-"),
-            sg.Checkbox("Track even without auto-login", default=config.get("track_without_autologin", False), key="-TRACK-WITHOUT-LOGIN-"),
+            sg.Checkbox(tr("Track playtime automatically"), default=config.get("auto_playtime_tracking", True), key="-AUTO-PLAYTIME-"),
+            sg.Checkbox(tr("Track even without auto-login"), default=config.get("track_without_autologin", False), key="-TRACK-WITHOUT-LOGIN-"),
         ],
         [sg.HorizontalSeparator()],
-        [sg.Text("Launch Options", font=("Segoe UI", 11, "bold"))],
+        [sg.Text(tr("Launch Options"), font=("Segoe UI", 11, "bold"))],
         [
-            sg.Text("Extra launch arguments"),
+            sg.Text(tr("Extra launch arguments")),
             sg.Input(
                 " ".join(str(a) for a in config.get("extra_args", [])),
                 key="-EXTRA-ARGS-",
                 size=(36, 1),
-                tooltip="Space-separated, e.g. -nosound -window",
+                tooltip=_tip("Space-separated, e.g. -nosound -window"),
             ),
         ],
         [sg.HorizontalSeparator()],
@@ -638,8 +759,8 @@ def build_settings_tab(config: dict) -> List:
                 readonly=True,
                 size=(16, 1),
             ),
-            sg.Button("Create Backup", key="-BACKUP-CREATE-"),
-            sg.Button("Open Backup Folder", key="-BACKUP-OPEN-FOLDER-"),
+            sg.Button("Create Backup", key="-BACKUP-CREATE-", tooltip=_tip("Create a backup of the selected profile data")),
+            sg.Button("Open Backup Folder", key="-BACKUP-OPEN-FOLDER-", tooltip=_tip("Open the folder containing profile backups")),
         ],
         [
             sg.Text("Restore file", size=(12, 1)),
@@ -649,7 +770,7 @@ def build_settings_tab(config: dict) -> List:
                 target="-BACKUP-RESTORE-FILE-",
                 file_types=(("WizQ Backups", "*.wizqbackup.zip"), ("ZIP", "*.zip"), ("All Files", "*.*")),
             ),
-            sg.Button("Restore Backup", key="-BACKUP-RESTORE-"),
+            sg.Button("Restore Backup", key="-BACKUP-RESTORE-", tooltip=_tip("Restore profile data from the selected backup file")),
         ],
         [
             sg.Text("Restore scope", size=(16, 1)),
@@ -734,7 +855,7 @@ def build_performance_tab(enable_perf: bool = True) -> List:
                 default=enable_perf,
                 key="-ENABLE-PERF-MONITOR-",
                 enable_events=True,
-                tooltip="Toggle live CPU/RAM/Wizard memory polling on or off",
+                tooltip=_tip("Toggle live CPU/RAM/Wizard memory polling on or off"),
             )
         ],
         [sg.Text("Live metrics refresh automatically while app is running.", font=("Segoe UI", 9, "italic"))],
@@ -903,7 +1024,7 @@ def build_wizwall_tab(config: dict) -> List:
                 "Borderless",
                 default=default_borderless,
                 key="-WW-BORDERLESS-",
-                tooltip="Remove title-bar and borders for seamless tiling",
+                tooltip=_tip("Remove title-bar and borders for seamless tiling"),
             ),
         ],
 
@@ -911,10 +1032,10 @@ def build_wizwall_tab(config: dict) -> List:
 
         # ── Action buttons ───────────────────────────────────────────────────
         [
-            sg.Button("Scan Windows",    key="-WW-SCAN-",    size=(14, 1)),
-            sg.Button("Arrange Grid",    key="-WW-ARRANGE-", size=(14, 1), button_color=("white", "#1A6B2E")),
-            sg.Button("Save Positions",  key="-WW-SAVE-",    size=(14, 1)),
-            sg.Button("Restore",         key="-WW-RESTORE-", size=(14, 1)),
+            sg.Button("Scan Windows",    key="-WW-SCAN-",    size=(14, 1), tooltip=_tip("Find all currently open Wizard101 windows")),
+            sg.Button("Arrange Grid",    key="-WW-ARRANGE-", size=(14, 1), button_color=("white", "#1A6B2E"), tooltip=_tip("Arrange scanned windows using the selected grid")),
+            sg.Button("Save Positions",  key="-WW-SAVE-",    size=(14, 1), tooltip=_tip("Save the current window positions")),
+            sg.Button("Restore",         key="-WW-RESTORE-", size=(14, 1), tooltip=_tip("Restore the last saved window positions")),
         ],
 
         [sg.HorizontalSeparator()],
@@ -966,6 +1087,8 @@ def build_extensions_tab(config: dict) -> List:
         extension_tabs.append(sg.Tab("Wizwall", build_wizwall_tab(config), key="-TAB-WIZWALL-"))
     if config.get("show_extension_capture", True):
         extension_tabs.append(sg.Tab("Clip & Record", build_capture_tab(config), key="-TAB-CAPTURE-"))
+    if config.get("show_extension_theme_creator", True):
+        extension_tabs.append(sg.Tab("Theme-Creator", build_theme_creator_tab(config), key="-TAB-THEME-CREATOR-"))
 
     if not extension_tabs:
         return [
@@ -1010,9 +1133,9 @@ def build_capture_tab(config: dict) -> List:
                 enable_events=True,
             ),
             sg.Column([
-                [sg.Button("🔍 Scan Windows", key="-CAP-SCAN-", size=(16, 1))],
-                [sg.Button("📸 Screenshot All", key="-CAP-SCREENSHOT-ALL-", size=(16, 1))],
-                [sg.Button("📸 Screenshot", key="-CAP-SCREENSHOT-", size=(16, 1))],
+                [sg.Button("🔍 Scan Windows", key="-CAP-SCAN-", size=(16, 1), tooltip=_tip("Find available Wizard101 windows for capture"))],
+                [sg.Button("📸 Screenshot All", key="-CAP-SCREENSHOT-ALL-", size=(16, 1), tooltip=_tip("Capture a screenshot from every scanned window"))],
+                [sg.Button("📸 Screenshot", key="-CAP-SCREENSHOT-", size=(16, 1), tooltip=_tip("Capture the selected Wizard101 window"))],
             ]),
         ],
 
@@ -1021,10 +1144,10 @@ def build_capture_tab(config: dict) -> List:
         # Recording controls
         [sg.Text("Recording:", font=("Segoe UI", 10, "bold"))],
         [
-            sg.Button("⏺ Start Recording", key="-CAP-REC-START-", size=(18, 1)),
-            sg.Button("⏹ Stop Recording", key="-CAP-REC-STOP-", size=(18, 1), disabled=True),
+            sg.Button("⏺ Start Recording", key="-CAP-REC-START-", size=(18, 1), tooltip=_tip("Start recording the selected window")),
+            sg.Button("⏹ Stop Recording", key="-CAP-REC-STOP-", size=(18, 1), disabled=True, tooltip=_tip("Stop the current recording and save it")),
             sg.Button("💾 Save Clip", key="-CAP-CLIP-SAVE-", size=(14, 1),
-                      tooltip=f"Save last {config.get('clip_buffer_seconds', 30)}s from buffer"),
+                      tooltip=_tip(f"Save last {config.get('clip_buffer_seconds', 30)}s from buffer")),
         ],
         [sg.Text("", key="-CAP-REC-STATUS-", size=(60, 1), font=("Segoe UI", 9))],
 
@@ -1101,7 +1224,7 @@ def build_stats_tab(stats_list: List[dict]) -> List:
         [
             sg.Button("Refresh"),
             sg.Button("Export Stats"),
-            sg.Button("Reset Selected", key="-RESET-SELECTED-STATS-", tooltip="Reset playtime for the selected account"),
+            sg.Button("Reset Selected", key="-RESET-SELECTED-STATS-", tooltip=_tip("Reset playtime for the selected account")),
             sg.Button("Reset All Stats"),
         ],
     ]
@@ -1138,8 +1261,12 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
     Returns:
         PySimpleGUI Window object
     """
+    global _UI_TOOLTIPS_ENABLED
+    _UI_TOOLTIPS_ENABLED = bool(config.get("tooltips_enabled", False))
+
     current_region = config.get("current_region", "de")
     region_name = REGION_META.get(current_region, {}).get("name", current_region.upper())
+    tr = lambda text: t(text, config.get("language", "en"))
     
     # Filter accounts by current region
     region_accounts = [acc for acc in accounts if acc.region == current_region]
@@ -1187,24 +1314,24 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
     show_performance_tab = _tab_visible("show_performance_tab", config.get("enable_performance_monitor", True))
 
     tabs = [
-        sg.Tab("Launch",      _scroll_col(build_launch_tab(config, account_list),    "-SCROLL-LAUNCH-"),      key="-TAB-LAUNCH-"),
-        sg.Tab("Accounts",    _scroll_col(build_accounts_tab(account_list),           "-SCROLL-ACCOUNTS-"),    key="-TAB-ACCOUNTS-"),
-        sg.Tab("Regions",     _scroll_col(build_regions_tab(config),                  "-SCROLL-REGIONS-"),     key="-TAB-REGIONS-"),
-        sg.Tab("Stats",       _scroll_col(build_stats_tab(stats_list),                "-SCROLL-STATS-"),       key="-TAB-STATS-"),
-        sg.Tab("Settings",    _scroll_col(build_settings_tab(config),                 "-SCROLL-SETTINGS-"),    key="-TAB-SETTINGS-"),
-        sg.Tab("Logs",        _scroll_col(build_logs_tab(log_viewer),                 "-SCROLL-LOGS-"),        key="-TAB-LOGS-"),
+        sg.Tab(tr("Launch"),      _scroll_col(build_launch_tab(config, account_list),    "-SCROLL-LAUNCH-"),      key="-TAB-LAUNCH-"),
+        sg.Tab(tr("Accounts"),    _scroll_col(build_accounts_tab(account_list),           "-SCROLL-ACCOUNTS-"),    key="-TAB-ACCOUNTS-"),
+        sg.Tab(tr("Regions"),     _scroll_col(build_regions_tab(config),                  "-SCROLL-REGIONS-"),     key="-TAB-REGIONS-"),
+        sg.Tab(tr("Stats"),       _scroll_col(build_stats_tab(stats_list),                "-SCROLL-STATS-"),       key="-TAB-STATS-"),
+        sg.Tab(tr("Settings"),    _scroll_col(build_settings_tab(config),                 "-SCROLL-SETTINGS-"),    key="-TAB-SETTINGS-"),
+        sg.Tab(tr("Logs"),        _scroll_col(build_logs_tab(log_viewer),                 "-SCROLL-LOGS-"),        key="-TAB-LOGS-"),
     ]
 
     if show_extensions_tab:
-        tabs.insert(2, sg.Tab("Extensions", _scroll_col(build_extensions_tab(config), "-SCROLL-EXTENSIONS-"), key="-TAB-EXTENSIONS-"))
+        tabs.insert(2, sg.Tab(tr("Extensions"), _scroll_col(build_extensions_tab(config), "-SCROLL-EXTENSIONS-"), key="-TAB-EXTENSIONS-"))
 
     if show_tools_tab:
         tools_index = 4 if show_extensions_tab else 3
-        tabs.insert(tools_index, sg.Tab("Tools", _scroll_col(build_tools_tab(), "-SCROLL-TOOLS-"), key="-TAB-TOOLS-"))
+        tabs.insert(tools_index, sg.Tab(tr("Tools"), _scroll_col(build_tools_tab(), "-SCROLL-TOOLS-"), key="-TAB-TOOLS-"))
 
     if show_performance_tab:
         performance_index = 4 if (show_extensions_tab or show_tools_tab) else 3
-        tabs.insert(performance_index, sg.Tab("Performance", _scroll_col(build_performance_tab(config.get("enable_performance_monitor", True)), "-SCROLL-PERF-"), key="-TAB-PERFORMANCE-"))
+        tabs.insert(performance_index, sg.Tab(tr("Performance"), _scroll_col(build_performance_tab(config.get("enable_performance_monitor", True)), "-SCROLL-PERF-"), key="-TAB-PERFORMANCE-"))
 
     layout = [
         # Title bar with app name, version, and active region
@@ -1237,7 +1364,7 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
         ],
         
         # Status bar at bottom
-        [sg.StatusBar("Ready", key="-STATUS-")],
+        [sg.StatusBar(tr("Ready"), key="-STATUS-")],
     ]
 
     icon_path = resolve_icon_path(config)

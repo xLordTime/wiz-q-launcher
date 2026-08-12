@@ -492,7 +492,7 @@ def account_display(account: Account) -> str:
 
 
 def add_edit_account(account: Optional[Account] = None, current_region: str = "de") -> Optional[Account]:
-    """Dialog to add or edit an account."""
+    """Open a focused, validated dialog for adding or editing an account."""
     from core.config import REGION_META
     
     # Build region options
@@ -507,22 +507,32 @@ def add_edit_account(account: Optional[Account] = None, current_region: str = "d
     else:
         default_region = f"{current_region.upper()} - {REGION_META.get(current_region, {}).get('name', current_region.upper())}"
     
+    action = "Edit Account" if account else "Add Account"
     layout = [
-        [sg.Text("Name"), sg.Input(account.name if account else "", key="-NAME-")],
+        [sg.Text(action, font=("Segoe UI", 14, "bold"), pad=((0, 0), (0, 8)))],
+        [sg.Text("Display name", size=(14, 1)), sg.Input(
+            account.name if account else "", key="-NAME-", expand_x=True,
+            tooltip="A friendly name shown in the launcher",
+        )],
         [
-            sg.Text("Username"),
-            sg.Input(account.username if account else "", key="-USER-"),
+            sg.Text("Username", size=(14, 1)),
+            sg.Input(
+                account.username if account else "", key="-USER-", expand_x=True,
+                tooltip="Your Wizard101 login name",
+            ),
         ],
         [
-            sg.Text("Password"),
+            sg.Text("Password", size=(14, 1)),
             sg.Input(
                 account.password if account else "",
                 key="-PASS-",
                 password_char="*",
+                expand_x=True,
             ),
+            sg.Button("Show", key="-SHOW-PASS-", size=(7, 1)),
         ],
         [
-            sg.Text("Region"),
+            sg.Text("Region", size=(14, 1)),
             sg.Combo(
                 region_options,
                 default_value=default_region,
@@ -531,26 +541,40 @@ def add_edit_account(account: Optional[Account] = None, current_region: str = "d
                 size=(30, 1)
             )
         ],
-        [sg.Button("Save"), sg.Button("Cancel")],
+        [sg.HorizontalSeparator()],
+        [sg.Text("Credentials are encrypted in your local account store.", font=("Segoe UI", 9, "italic"), text_color="#87909A")],
+        [sg.Push(), sg.Button("Cancel", key="Cancel"), sg.Button("Save Account", key="Save", bind_return_key=True, button_color=("white", "#238636"))],
     ]
 
-    window = sg.Window("Account", layout, modal=True)
+    window = sg.Window(action, layout, modal=True, finalize=True, resizable=False, size=(520, 270))
+    password_visible = False
     while True:
         event, values = window.read()
         if event in (sg.WIN_CLOSED, "Cancel"):
             window.close()
             return None
+        if event == "-SHOW-PASS-":
+            password_visible = not password_visible
+            window["-PASS-"].update(password_char="" if password_visible else "*")
+            window["-SHOW-PASS-"].update("Hide" if password_visible else "Show")
+            continue
         if event == "Save":
-            name = values["-NAME-"].strip()
-            username = values["-USER-"].strip()
-            password = values["-PASS-"].strip()
+            name = values.get("-NAME-", "").strip()
+            username = values.get("-USER-", "").strip()
+            password = values.get("-PASS-", "").strip()
             region_display = values["-REGION-"]
             
             # Extract region code from display (e.g., "DE - Deutschland" -> "de")
             region_code = region_display.split(" - ")[0].lower() if region_display else current_region
             
-            if not name or not username or not password:
-                sg.popup("Please fill all fields", title=APP_NAME)
+            if not name:
+                sg.popup_error("Enter a display name.", title=action)
+                continue
+            if not username:
+                sg.popup_error("Enter a username.", title=action)
+                continue
+            if not password:
+                sg.popup_error("Enter a password.", title=action)
                 continue
             window.close()
             
