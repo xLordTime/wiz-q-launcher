@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## v5.5.0 (2026-08-12) - UX, Themes & Release Build
+
+### Added
+- Custom Theme-Creator extension with persistent user themes.
+- Built-in Steve-Green theme with dark, neon-green, and apple-green styling.
+- Optional tooltips toggle in Settings, disabled by default.
+- Launch-tab account search, Select All, Clear Selection, and resizable account list.
+
+### Improved
+- Sequential instance launch with per-window detection timeout and exact account mapping.
+- Deferred Wizard101 install detection for faster startup on legacy PCs.
+- Improved account add/edit dialog with validation and password visibility control.
+- Release builds now include `release/WizQLauncher-5.5.0.exe`.
+
 ## v5.4.0 (2026-07-02) - Stability, Security, Storage & UX
 
 ### 🔧 Improvements
