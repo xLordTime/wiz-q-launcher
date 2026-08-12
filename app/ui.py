@@ -38,12 +38,26 @@ _THEME_COLOR_KEYS = (
     "BUTTON_TEXT", "BUTTON_BACKGROUND", "ACCENT",
 )
 _HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_HEX_COLOR_SHORT = re.compile(r"^#[0-9A-Fa-f]{3}$")
 _UI_TOOLTIPS_ENABLED = False
+
+
+def normalize_hex_color(value: object) -> Optional[str]:
+    """Return a canonical uppercase #RRGGBB value, or None when invalid."""
+    text = str(value).strip()
+    if not text.startswith("#"):
+        text = f"#{text}"
+    if _HEX_COLOR.fullmatch(text):
+        return text.upper()
+    if _HEX_COLOR_SHORT.fullmatch(text):
+        return "#" + "".join(character * 2 for character in text[1:]).upper()
+    return None
 
 
 def _tip(text: str) -> Optional[str]:
     """Return a tooltip only when the user enabled tooltips."""
     return text if _UI_TOOLTIPS_ENABLED else None
+
 
 # Flat PyQt6-style theme definitions shared across all themes.
 # BORDER=0 + SLIDER_DEPTH=0 + PROGRESS_DEPTH=0 remove all tkinter 3-D effects.
@@ -185,15 +199,19 @@ def apply_theme(config: dict) -> None:
     for name, definition in config.get("custom_themes", {}).items():
         if not isinstance(name, str) or not isinstance(definition, dict):
             continue
-        if all(_HEX_COLOR.fullmatch(str(definition.get(key, ""))) for key in _THEME_COLOR_KEYS):
+        normalized_definition = {
+            key: normalize_hex_color(definition.get(key, ""))
+            for key in _THEME_COLOR_KEYS
+        }
+        if all(normalized_definition.values()):
             custom_definition = {
-                "BACKGROUND": definition["BACKGROUND"],
-                "TEXT": definition["TEXT"],
-                "INPUT": definition["INPUT"],
-                "TEXT_INPUT": definition["TEXT_INPUT"],
-                "SCROLL": definition["SCROLL"],
-                "BUTTON": (definition["BUTTON_TEXT"], definition["BUTTON_BACKGROUND"]),
-                "PROGRESS": (definition["ACCENT"], definition["BACKGROUND"]),
+                "BACKGROUND": normalized_definition["BACKGROUND"],
+                "TEXT": normalized_definition["TEXT"],
+                "INPUT": normalized_definition["INPUT"],
+                "TEXT_INPUT": normalized_definition["TEXT_INPUT"],
+                "SCROLL": normalized_definition["SCROLL"],
+                "BUTTON": (normalized_definition["BUTTON_TEXT"], normalized_definition["BUTTON_BACKGROUND"]),
+                "PROGRESS": (normalized_definition["ACCENT"], normalized_definition["BACKGROUND"]),
                 "BORDER": 0,
                 "SLIDER_DEPTH": 0,
                 "PROGRESS_DEPTH": 0,
@@ -221,22 +239,37 @@ def build_theme_creator_tab(config: dict) -> List:
     selected_definition = custom_themes.get(selected, {}) if isinstance(custom_themes, dict) else {}
 
     def color(key: str, fallback: str) -> str:
-        value = selected_definition.get(key, fallback)
-        return str(value) if _HEX_COLOR.fullmatch(str(value)) else fallback
+        return normalize_hex_color(selected_definition.get(key, fallback)) or fallback
+
+    def color_row(label: str, key: str, fallback: str) -> list:
+        field_key = f"-TC-{key}-"
+        pick_key = f"-TC-PICK-{key}-"
+        return [
+            sg.Text(label, size=(18, 1)),
+            sg.Input(color(key, fallback), key=field_key, size=(12, 1), enable_events=True),
+            sg.Button("Pick", key=pick_key, size=(7, 1), tooltip=_tip(f"Choose the {label.lower()} color")),
+            sg.Text("", key=f"-TC-SWATCH-{key}-", size=(3, 1), background_color=color(key, fallback)),
+        ]
 
     return [
         [sg.Text("Theme-Creator", font=("Segoe UI", 12, "bold"))],
-        [sg.Text("Create and save your own launcher theme. Use six-digit HEX colors.", font=("Segoe UI", 9, "italic"))],
+        [sg.Text("Create and save your own launcher theme. Pick colors visually or use six-digit HEX values.", font=("Segoe UI", 9, "italic"))],
         [sg.Text("Theme name"), sg.Input(selected if selected not in _AVAILABLE_THEMES else "", key="-TC-NAME-", size=(24, 1))],
-        [sg.Text("Background", size=(18, 1)), sg.Input(color("BACKGROUND", "#0D1117"), key="-TC-BACKGROUND-", size=(12, 1))],
-        [sg.Text("Text", size=(18, 1)), sg.Input(color("TEXT", "#E6EDF3"), key="-TC-TEXT-", size=(12, 1))],
-        [sg.Text("Input background", size=(18, 1)), sg.Input(color("INPUT", "#161B22"), key="-TC-INPUT-", size=(12, 1))],
-        [sg.Text("Input text", size=(18, 1)), sg.Input(color("TEXT_INPUT", "#E6EDF3"), key="-TC-TEXT-INPUT-", size=(12, 1))],
-        [sg.Text("Scroll", size=(18, 1)), sg.Input(color("SCROLL", "#30363D"), key="-TC-SCROLL-", size=(12, 1))],
-        [sg.Text("Button text", size=(18, 1)), sg.Input(color("BUTTON_TEXT", "#FFFFFF"), key="-TC-BUTTON-TEXT-", size=(12, 1))],
-        [sg.Text("Button background", size=(18, 1)), sg.Input(color("BUTTON_BACKGROUND", "#238636"), key="-TC-BUTTON-BG-", size=(12, 1))],
-        [sg.Text("Accent", size=(18, 1)), sg.Input(color("ACCENT", "#238636"), key="-TC-ACCENT-", size=(12, 1))],
-        [sg.Button("Save Theme", key="-TC-SAVE-"), sg.Button("Apply Theme", key="-TC-APPLY-"), sg.Button("Delete Theme", key="-TC-DELETE-")],
+        [
+            sg.Column([
+                [sg.Text("Theme palette", font=("Segoe UI", 10, "bold"))],
+                [sg.Text("Enter HEX values or use Pick to choose a color.", size=(34, 2))],
+            ], vertical_alignment="top"),
+        ],
+        color_row("Background", "BACKGROUND", "#0D1117"),
+        color_row("Text", "TEXT", "#E6EDF3"),
+        color_row("Input background", "INPUT", "#161B22"),
+        color_row("Input text", "TEXT_INPUT", "#E6EDF3"),
+        color_row("Scroll", "SCROLL", "#30363D"),
+        color_row("Button text", "BUTTON_TEXT", "#FFFFFF"),
+        color_row("Button background", "BUTTON_BACKGROUND", "#238636"),
+        color_row("Accent", "ACCENT", "#238636"),
+        [sg.Button("Save Theme", key="-TC-SAVE-", tooltip=_tip("Save this custom theme")), sg.Button("Apply Theme", key="-TC-APPLY-", tooltip=_tip("Apply the selected theme")), sg.Button("Delete Theme", key="-TC-DELETE-", tooltip=_tip("Delete the selected custom theme"))],
         [sg.Text("Saved custom themes:"), sg.Combo(_available_themes(config), default_value=selected, key="-TC-SELECT-", readonly=True, enable_events=True, size=(24, 1))],
         [sg.Text("Built-in themes are not changed or deleted.", font=("Segoe UI", 9, "italic"), text_color="#9AA5B1")],
     ]
@@ -1391,6 +1424,7 @@ def build_window(config: dict, accounts: List[Account], log_file_path: Optional[
     window.bind('<F4>', 'F4')
     window.bind('<Control-e>', 'Ctrl+E')
     window.bind('<Control-s>', 'Ctrl+S')
+
 
     return window
 

@@ -25,6 +25,8 @@ Architecture:
 """
 
 import logging
+import colorsys
+import copy
 import os
 import queue
 import re
@@ -32,6 +34,7 @@ import shutil
 import sys
 import threading
 import time
+from tkinter import colorchooser
 import webbrowser
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -71,7 +74,13 @@ from services.launcher import (
 )
 from core.logging_utils import setup_logging
 from services.playtime_tracker import PlaytimeTracker
-from app.ui import _AVAILABLE_THEMES, apply_theme, build_window, bind_mousewheel_scroll
+from app.ui import (
+    _AVAILABLE_THEMES,
+    apply_theme,
+    bind_mousewheel_scroll,
+    build_window,
+    normalize_hex_color,
+)
 from core.i18n import selected_language_code
 from services.performance_monitor import PerformanceMonitor
 from integrations.discord_integration import DiscordIntegration
@@ -549,6 +558,9 @@ def main() -> int:
     last_handles_ts = 0.0              # throttle: Win32 handle enumeration every 2 s
     _update_result_queue: queue.Queue = queue.Queue()
     _download_queue: queue.Queue = queue.Queue()   # progress/complete/error from download thread
+    _poll_result_queue: queue.Queue = queue.Queue()
+    _poll_in_flight = False
+    _account_save_lock = threading.Lock()
     _pending_update_path: Optional[Path] = None    # path to downloaded .exe ready to install
 
     # System tray (optional — needs pystray + Pillow in requirements)
@@ -623,6 +635,38 @@ def main() -> int:
         reporter.discord_webhook = str(config.get("discord_webhook_url", "")).strip() or None
 
     _sync_reporter_config()
+
+    def _run_background_poll(include_performance: bool) -> None:
+        """Collect slow process metrics away from the Tk event loop."""
+        try:
+            track_external = config.get("auto_playtime_tracking", True) and config.get(
+                "track_without_autologin", True
+            )
+            handles = set(get_wizard_handles_safe()) if (track_external or active_sessions) else set()
+            snapshot = None
+            if include_performance and perf_monitor:
+                snapshot = perf_monitor.take_snapshot()
+            _poll_result_queue.put((handles, snapshot))
+        except Exception as exc:
+            logger.debug("Background UI poll failed: %s", exc)
+            _poll_result_queue.put((None, None))
+
+    def _save_accounts_background() -> None:
+        """Persist a stable account snapshot without blocking the UI loop."""
+        snapshot = copy.deepcopy(accounts)
+
+        def save_snapshot() -> None:
+            with _account_save_lock:
+                try:
+                    save_accounts(paths["accounts_file"], master_password, snapshot)
+                except Exception:
+                    logger.exception("Background account save failed")
+
+        threading.Thread(
+            target=save_snapshot,
+            name="account-save",
+            daemon=True,
+        ).start()
 
     def _stats_table_rows() -> list:
         """Build stats table row data from current accounts + tracker (for in-place updates).
@@ -1110,15 +1154,44 @@ def main() -> int:
         # Handle playtime polling (timeout events)
         if event == sg.TIMEOUT_EVENT:
             try:
+                poll_result = None
+                try:
+                    poll_result = _poll_result_queue.get_nowait()
+                    _poll_in_flight = False
+                except queue.Empty:
+                    pass
+
                 _track_auto = config.get("auto_playtime_tracking", True)
                 _track_ext = _track_auto and config.get("track_without_autologin", True)
 
-                # Fetch current handles — throttled to every 2 s to reduce Win32 overhead
-                current_handles: Optional[set] = None
+                # Fetch current handles off-thread so Win32/psutil work cannot freeze Tk.
+                current_handles: Optional[set] = poll_result[0] if poll_result else None
                 now_handles = time.time()
-                if (active_sessions or _track_ext) and now_handles - last_handles_ts >= 2.0:
-                    current_handles = set(get_wizard_handles_safe())
+                perf_due = bool(
+                    perf_monitor
+                    and config.get("enable_performance_monitor", True)
+                    and now_handles - last_perf_snapshot_ts >= max(
+                        1.0, float(config.get("performance_poll_interval", 5))
+                    )
+                )
+                if (
+                    (active_sessions or _track_ext or perf_due)
+                    and now_handles - last_handles_ts >= 2.0
+                    and not _poll_in_flight
+                ):
+                    include_performance = perf_due
+                    _poll_in_flight = True
+                    threading.Thread(
+                        target=_run_background_poll,
+                        args=(include_performance,),
+                        name="launcher-ui-poll",
+                        daemon=True,
+                    ).start()
                     last_handles_ts = now_handles
+
+                if poll_result and poll_result[1] is not None:
+                    refresh_performance_ui()
+                    last_perf_snapshot_ts = time.time()
 
                 # End sessions for windows that have been closed
                 if active_sessions and current_handles is not None:
@@ -1134,7 +1207,7 @@ def main() -> int:
                                 accounts,
                                 reason="window_closed",
                             )
-                            save_accounts(paths["accounts_file"], master_password, accounts)
+                            _save_accounts_background()
                             if discord and config.get("discord_notifications") and config.get("discord_session_end", True) and duration_secs:
                                 discord.send_session_ended(acc.name, duration_secs / 60.0)
                         else:
@@ -1181,14 +1254,6 @@ def main() -> int:
                             selected_account.total_playtime if selected_account else 0.0
                         ),
                     )
-
-                if perf_monitor and config.get("enable_performance_monitor", True):
-                    poll_interval = max(1.0, float(config.get("performance_poll_interval", 5)))
-                    now_perf = time.time()
-                    if now_perf - last_perf_snapshot_ts >= poll_interval:
-                        perf_monitor.take_snapshot()
-                        refresh_performance_ui()
-                        last_perf_snapshot_ts = now_perf
 
                 # Auto-refresh Stats table in-place — throttled to once every 5 s
                 now_stats = time.time()
@@ -2139,36 +2204,93 @@ def main() -> int:
                     sg.popup(f"Webhook test error: {e}", title=APP_NAME)
 
         # ================== THEME TOGGLE HANDLER ==================
+        theme_color_fields = {
+            "BACKGROUND": "-TC-BACKGROUND-",
+            "TEXT": "-TC-TEXT-",
+            "INPUT": "-TC-INPUT-",
+            "TEXT_INPUT": "-TC-TEXT_INPUT-",
+            "SCROLL": "-TC-SCROLL-",
+            "BUTTON_TEXT": "-TC-BUTTON_TEXT-",
+            "BUTTON_BACKGROUND": "-TC-BUTTON_BACKGROUND-",
+            "ACCENT": "-TC-ACCENT-",
+        }
+        for color_name, field_key in theme_color_fields.items():
+            if event == f"-TC-PICK-{color_name}-":
+                current_color = str(values.get(field_key, "#FFFFFF")).strip()
+                logger.info(
+                    "TEMP theme picker start: color=%s, field_key=%s, current_valid=%s",
+                    color_name,
+                    field_key,
+                    bool(re.fullmatch(r"#[0-9A-Fa-f]{6}", current_color)),
+                )
+                try:
+                    chosen = colorchooser.askcolor(
+                        color=normalize_hex_color(current_color) or "#FFFFFF",
+                        title=f"Choose {color_name.replace('_', ' ').title()}",
+                        parent=window.TKroot,
+                    )
+                    hex_color = chosen[1] if chosen and len(chosen) > 1 else None
+                    logger.info(
+                        "TEMP theme picker result: color=%s, result_type=%s, result_length=%s, hex_valid=%s",
+                        color_name,
+                        type(chosen).__name__,
+                        len(chosen) if chosen is not None and hasattr(chosen, "__len__") else None,
+                        bool(isinstance(hex_color, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", hex_color)),
+                    )
+                    hex_color = normalize_hex_color(hex_color)
+                    if hex_color:
+                        field_element = window.AllKeysDict.get(field_key)
+                        swatch_element = window.AllKeysDict.get(f"-TC-SWATCH-{color_name}-")
+                        logger.info(
+                            "TEMP theme picker elements: color=%s, field_found=%s, swatch_found=%s",
+                            color_name,
+                            field_element is not None,
+                            swatch_element is not None,
+                        )
+                        if field_element is not None:
+                            field_element.update(value=hex_color)
+                        if swatch_element is not None:
+                            swatch_element.update(background_color=hex_color)
+                except Exception as exc:
+                    logger.exception("TEMP theme color picker failed for %s: %s", color_name, exc)
+                break
+
         if event == "-TC-SAVE-":
             theme_name = str(values.get("-TC-NAME-", "")).strip()
             color_values = {
                 "BACKGROUND": values.get("-TC-BACKGROUND-", ""),
                 "TEXT": values.get("-TC-TEXT-", ""),
                 "INPUT": values.get("-TC-INPUT-", ""),
-                "TEXT_INPUT": values.get("-TC-TEXT-INPUT-", ""),
+                "TEXT_INPUT": values.get("-TC-TEXT_INPUT-", ""),
                 "SCROLL": values.get("-TC-SCROLL-", ""),
-                "BUTTON_TEXT": values.get("-TC-BUTTON-TEXT-", ""),
-                "BUTTON_BACKGROUND": values.get("-TC-BUTTON-BG-", ""),
+                "BUTTON_TEXT": values.get("-TC-BUTTON_TEXT-", ""),
+                "BUTTON_BACKGROUND": values.get("-TC-BUTTON_BACKGROUND-", ""),
                 "ACCENT": values.get("-TC-ACCENT-", ""),
             }
             if not theme_name:
                 sg.popup_error("Enter a theme name.", title=APP_NAME)
             elif theme_name in _AVAILABLE_THEMES:
                 sg.popup_error("Built-in themes cannot be overwritten.", title=APP_NAME)
-            elif not all(re.fullmatch(r"#[0-9A-Fa-f]{6}", str(value).strip()) for value in color_values.values()):
-                sg.popup_error("Use a valid six-digit HEX color, for example #238636.", title=APP_NAME)
             else:
-                config.setdefault("custom_themes", {})[theme_name] = {
-                    key: str(value).strip() for key, value in color_values.items()
+                normalized_colors = {
+                    key: normalize_hex_color(value) for key, value in color_values.items()
                 }
-                config["ui_theme"] = theme_name
-                save_config(paths["config_file"], config)
-                apply_theme(config)
-                window.close()
-                window = build_window(config, accounts, log_file_path=str(log_file))
-                bind_mousewheel_scroll(window)
-                _refresh_master_password_ui()
-                _refresh_migration_ui()
+                invalid_colors = [key.replace("_", " ").title() for key, value in normalized_colors.items() if value is None]
+                if invalid_colors:
+                    sg.popup_error(
+                        "Invalid color value(s): " + ", ".join(invalid_colors) + ".\nUse #RRGGBB or #RGB, for example #238636 or #386.",
+                        title=APP_NAME,
+                    )
+                else:
+                    config.setdefault("custom_themes", {})[theme_name] = normalized_colors
+                    config["ui_theme"] = theme_name
+                    save_config(paths["config_file"], config)
+                    apply_theme(config)
+                    window.close()
+                    window = build_window(config, accounts, log_file_path=str(log_file))
+                    bind_mousewheel_scroll(window)
+                    _refresh_master_password_ui()
+                    _refresh_migration_ui()
 
         if event == "-TC-APPLY-":
             selected_theme = str(values.get("-TC-SELECT-", "")).strip()
