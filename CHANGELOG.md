@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v5.5.1 (2026-08-12) - Theme-Creator Stability & Color Handling
+
+### Fixed
+- Removed the unstable Theme-Creator live preview.
+- Fixed Theme-Creator field-key mismatches that rejected valid button colors such as `#FFFFFF`.
+- Hardened the Tk color picker result handling after pressing OK.
+
+### Improved
+- Color input now accepts `#RRGGBB`, `RRGGBB`, `#RGB`, and `RGB` formats.
+- Valid colors are normalized to uppercase `#RRGGBB` values before saving.
+- Invalid color fields are reported by name instead of causing a launcher error.
+
 ## v5.5.0 (2026-08-12) - UX, Themes & Release Build
 
 ### Added
