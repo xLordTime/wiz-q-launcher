@@ -383,7 +383,7 @@ class ThemesPage(QWidget):
                 (
                     i
                     for i, t in enumerate(self.themes)
-                    if t.id == self.window.store.get("theme", "mythic-explorers")
+                    if t.id == self.window.store.get("theme", "aero-explorer")
                 ),
                 0,
             )
@@ -438,7 +438,7 @@ class AddonsPage(QWidget):
         super().__init__()
         self.window, self.workers = window, {}
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(10, 8, 10, 8)
         layout.addWidget(label("Addons", name="title"))
         layout.addWidget(label("Ein schlanker Core. Erweiterungen nach deinem Bedarf.", muted=True))
         split = QSplitter()
@@ -493,7 +493,7 @@ class AddonsPage(QWidget):
         split.addWidget(self.navigation)
         split.addWidget(self.stack)
         split.setStretchFactor(1, 1)
-        layout.addWidget(split)
+        layout.addWidget(split, 1)
         self.navigation.setCurrentRow(0)
 
     def choose(self, index):

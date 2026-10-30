@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from cryptography.fernet import InvalidToken
-from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, Qt, QThreadPool, QTimer
+from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QThreadPool, QTimer
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QPalette, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
     QGraphicsOpacityEffect,
-    QHBoxLayout,
     QInputDialog,
     QLineEdit,
     QMainWindow,
@@ -32,15 +31,17 @@ from PySide6.QtWidgets import (
 
 from . import __version__, backend, updates
 from .addon_pages import AddonsPage
+from .desktop import DesktopShell
 from .hotkeys import Hotkeys
+from .launch_page import LaunchPage
 from .migration import legacy_sources, migrate
-from .pages import AccountsPage, HelpPage, LaunchPage, PlaytimePage
+from .pages import AccountsPage, HelpPage, PlaytimePage
 from .paths import Paths, ProfileLock
 from .sessions import Sessions
 from .settings import get
 from .settings_page import SettingsPage
 from .storage import ProfileError, Store, check_database, restore_backup
-from .themes import BUILTINS, Backdrop, catalog, stylesheet
+from .themes import BUILTINS, catalog, stylesheet
 from .vault import Vault
 from .widgets import Button, Task, label, row
 
@@ -117,7 +118,7 @@ def app_icon():
     return QIcon(pix)
 
 
-class Window(QMainWindow):
+class Window(DesktopShell, QMainWindow):
     def __init__(self, paths, store, vault, safe_mode=False):
         super().__init__()
         self.paths, self.store, self.vault, self.safe_mode = paths, store, vault, safe_mode
@@ -133,48 +134,15 @@ class Window(QMainWindow):
         self.found = []
         self.setWindowTitle("Wiz Q Launcher · " + __version__)
         self.setWindowIcon(app_icon())
-        self.setMinimumSize(950, 670)
-        size = store.get("window_size", [1240, 840])
-        self.resize(max(950, min(1800, int(size[0]))), max(670, min(1100, int(size[1]))))
-        self.background = Backdrop(BUILTINS[10])
-        root = QVBoxLayout(self.background)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        self.setCentralWidget(self.background)
-        body = QHBoxLayout()
-        body.setSpacing(0)
-        self.sidebar = QWidget()
-        self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(208)
-        side = QVBoxLayout(self.sidebar)
-        side.setContentsMargins(12, 20, 12, 14)
-        side.setSpacing(7)
-        self.brand = label("WIZ Q\nLAUNCHER", name="metric")
-        side.addWidget(self.brand)
-        self.version_label = label("VERSION 6 · BETA", muted=True)
-        side.addWidget(self.version_label)
-        side.addSpacing(20)
-        self.stack, self.nav = QStackedWidget(), []
-        for i, text in enumerate(
-            ("◈   Launch", "☷   Accounts", "◷   Playtime", "◇   Addons", "⚙   Einstellungen", "?   Help")
-        ):
-            button = Button(text, lambda _, index=i: self.navigate(index))
-            button.setObjectName("nav")
-            button.setCheckable(True)
-            button.setToolTip(text)
-            side.addWidget(button)
-            self.nav.append(button)
-        side.addStretch()
-        side.addWidget(Button("☰  Navigation", self.collapse_sidebar))
-        side.addWidget(Button("Tresor sperren", self.lock_vault))
-        side.addWidget(Button("Tutorial", self.tutorial))
-        body.addWidget(self.sidebar)
-        body.addWidget(self.stack, 1)
-        root.addLayout(body, 1)
-        self.status = label("Bereit · Daten lokal geschützt", muted=True)
-        self.status.setTextFormat(Qt.TextFormat.PlainText)
-        self.status.setContentsMargins(20, 7, 20, 7)
-        root.addWidget(self.status)
+        self.setMinimumSize(900, 610)
+        size = store.get("window_size", [1120, 760])
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.resize(
+            max(900, min(screen.width(), int(size[0]))), max(610, min(screen.height() - 35, int(size[1])))
+        )
+        self.background = QWidget()
+        self.background.setObjectName("desktopBackground")
+        self.stack = QStackedWidget()
         self.launch_page, self.accounts_page = LaunchPage(self), AccountsPage(self)
         self.playtime_page, self.addons_page = PlaytimePage(self), AddonsPage(self)
         self.settings_page, self.help_page = SettingsPage(self), HelpPage(self)
@@ -187,11 +155,12 @@ class Window(QMainWindow):
             self.help_page,
         ):
             self.stack.addWidget(page)
+        self.build_desktop()
         self.fade_effect = QGraphicsOpacityEffect(self.stack)
         self.stack.setGraphicsEffect(self.fade_effect)
         self.fade_effect.setOpacity(1)
         self.fade = QPropertyAnimation(self.fade_effect, b"opacity", self)
-        self.fade.setDuration(180)
+        self.fade.setDuration(120)
         self.fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.apply_theme()
         self.navigate(0)
@@ -234,18 +203,27 @@ class Window(QMainWindow):
         themes = BUILTINS if self.safe_mode else catalog(self.paths.directory("themes"))
         ident = "obsidian" if self.safe_mode else get(self.store, "theme")
         self.theme = next((t for t in themes if t.id == ident), BUILTINS[0])
-        QApplication.instance().setStyleSheet(stylesheet(self.theme, get(self.store, "font_size")))
         palette = QApplication.palette()
         for role, color in (
             (QPalette.ColorRole.Window, self.theme.background),
             (QPalette.ColorRole.WindowText, self.theme.text),
             (QPalette.ColorRole.Base, self.theme.panel),
+            (QPalette.ColorRole.AlternateBase, self.theme.background),
             (QPalette.ColorRole.Text, self.theme.text),
-            (QPalette.ColorRole.Highlight, self.theme.accent),
+            (QPalette.ColorRole.Button, self.theme.elevated),
+            (QPalette.ColorRole.Highlight, self.theme.secondary),
+            (QPalette.ColorRole.HighlightedText, self.theme.text),
             (QPalette.ColorRole.ButtonText, self.theme.text),
+            (QPalette.ColorRole.ToolTipBase, self.theme.elevated),
+            (QPalette.ColorRole.ToolTipText, self.theme.text),
+            (QPalette.ColorRole.Light, QColor(self.theme.elevated).lighter(135).name()),
+            (QPalette.ColorRole.Midlight, self.theme.elevated),
+            (QPalette.ColorRole.Dark, QColor(self.theme.elevated).darker(130).name()),
+            (QPalette.ColorRole.Mid, self.theme.elevated),
         ):
             palette.setColor(role, QColor(color))
         QApplication.setPalette(palette)
+        QApplication.instance().setStyleSheet(stylesheet(self.theme, get(self.store, "font_size")))
         motion = (
             get(self.store, "animations") and get(self.store, "performance") != "eco" and not self.safe_mode
         )
@@ -254,8 +232,7 @@ class Window(QMainWindow):
             ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(enabled), 0)
             motion = motion and bool(enabled.value)
         Button.motion = motion
-        self.background.theme, self.background.motion = self.theme, motion
-        self.background.update()
+        self.desktop_theme_changed()
 
     def addon_enabled(self, ident):
         return not self.safe_mode and self.store.get("addon:" + ident, True)
@@ -264,28 +241,6 @@ class Window(QMainWindow):
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
             self.last_interaction = time.monotonic()
         return super().eventFilter(obj, event)
-
-    def collapse_sidebar(self):
-        narrow = self.sidebar.width() > 100
-        self.sidebar.setFixedWidth(78 if narrow else 208)
-        self.brand.setText("WQ" if narrow else "WIZ Q\nLAUNCHER")
-        self.version_label.setVisible(not narrow)
-        for button in self.nav:
-            button.setText(button.toolTip()[0] if narrow else button.toolTip())
-
-    def navigate(self, index):
-        self.fade.stop()
-        self.stack.setCurrentIndex(index)
-        for i, button in enumerate(self.nav):
-            button.setChecked(i == index)
-        if index == 2:
-            self.playtime_page.refresh()
-        if Button.motion and self.isVisible():
-            self.fade.setStartValue(0.25)
-            self.fade.setEndValue(1.0)
-            self.fade.start()
-        else:
-            self.fade_effect.setOpacity(1)
 
     def notice(self, text, transient=False):
         self.status.setText(str(text)[:600])
@@ -328,6 +283,7 @@ class Window(QMainWindow):
     def refresh_accounts(self):
         self.accounts_page.refresh()
         self.launch_page.refresh_groups()
+        self.refresh_navigation()
         self.playtime_page.refresh()
 
     def ensure_unlocked(self):
@@ -359,7 +315,7 @@ class Window(QMainWindow):
         steps = [
             (
                 "1 · Dein Launcher",
-                "Accounts und Einstellungen bleiben auf deinem PC. Help erklärt jederzeit jede Funktion.",
+                "Accounts und Einstellungen bleiben auf deinem PC. Die Baumansicht und die klickbare Pfadleiste öffnen alle Bereiche. F1 erklärt jede Funktion.",
             ),
             (
                 "2 · Die passende Region",
@@ -370,8 +326,8 @@ class Window(QMainWindow):
                 "Nickname, Username und Passwort im Account Management speichern. Gruppen und Drag & Drop helfen beim Sortieren.",
             ),
             (
-                "4 · Gemeinsam starten",
-                "Accounts unter Launch ankreuzen. Startprofile merken sich die Auswahl. Leere Instanzen starten ohne gespeicherte Zugangsdaten.",
+                "4 · Gemeinsam starten und navigieren",
+                "Accounts unter Alle Accounts ankreuzen. Die Pfadleiste öffnet Gruppen per Dropdown. Alt+Links und Alt+Rechts wechseln im Verlauf. Quicklaunch öffnet leere Instanzen über Datei.",
             ),
             (
                 "5 · Dein Stil",
@@ -633,6 +589,8 @@ class Window(QMainWindow):
         self.rpc.close()
         self.sessions.stop()
         self.store.set("window_size", [self.width(), self.height()])
+        self.store.set("desktop_split", self.desktop_split.sizes())
+        self.store.set("launch_split", self.launch_page.splitter.sizes())
         if self.tray:
             self.tray.hide()
 

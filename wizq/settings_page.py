@@ -9,6 +9,8 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
+    QFormLayout,
+    QFrame,
     QLineEdit,
     QListWidget,
     QProgressBar,
@@ -32,7 +34,7 @@ class SettingsPage(QWidget):
         super().__init__()
         self.window = window
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(10, 8, 10, 8)
         layout.addWidget(label("Einstellungen", name="title"))
         self.search = QLineEdit()
         self.search.setPlaceholderText("Einstellung finden …")
@@ -46,15 +48,21 @@ class SettingsPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         body = QWidget()
+        body.setObjectName("settingsBody")
         self.body = QVBoxLayout(body)
         self.body.setContentsMargins(10, 0, 10, 10)
         self.body.setSpacing(12)
         self.rows, self.controls = [], {}
         for spec in SETTINGS:
-            card, content = panel()
+            card = QFrame()
+            card.setObjectName("settingRow")
+            content = QFormLayout(card)
+            content.setContentsMargins(5, 9, 5, 9)
+            content.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+            content.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             heading = label(spec.title)
-            content.addWidget(heading)
-            content.addWidget(label(spec.help, muted=True))
+            heading.setMinimumWidth(150)
+            heading.setMaximumWidth(210)
             value = get(window.store, spec.key)
             if spec.key == "theme":
                 control = Combo()
@@ -87,12 +95,16 @@ class SettingsPage(QWidget):
             control.setAccessibleName(spec.title)
             control.setToolTip(spec.help)
             self.controls[spec.key] = control
-            actions = row(control, Button("?", lambda _, k=spec.title: window.open_help(k)))
+            help_button = Button("?", lambda _, k=spec.title: window.open_help(k))
+            help_button.setMaximumWidth(30)
+            help_button.setAccessibleName("Hilfe: " + spec.title)
+            actions = row(control, help_button)
             if spec.key.startswith("region_install_") or spec.key == "ffmpeg_path":
                 actions.addWidget(
                     Button("Auswählen …", lambda _, k=spec.key, c=control: self.pick_path(k, c))
                 )
-            content.addLayout(actions)
+            content.addRow(heading, actions)
+            content.addRow("", label(spec.help, muted=True))
             self.body.addWidget(card)
             self.rows.append((spec.section, spec.title + " " + spec.help + " " + spec.key, card))
         self.extra("Launcher & Regionen", self.install_actions())
@@ -104,7 +116,7 @@ class SettingsPage(QWidget):
         scroll.setWidget(body)
         split.addWidget(scroll)
         split.setStretchFactor(1, 1)
-        layout.addWidget(split)
+        layout.addWidget(split, 1)
         self.categories.currentTextChanged.connect(self.filter)
         self.search.textChanged.connect(self.filter)
         self.categories.setCurrentRow(0)

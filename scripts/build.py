@@ -1,5 +1,6 @@
 """Build the full Windows application; dependencies must already be installed."""
 
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -42,6 +43,10 @@ def build_exe():
     release.mkdir(exist_ok=True)
     target = release / f"WizQLauncher-v{__version__}.exe"
     shutil.copy2(root / "dist/WizQLauncher.exe", target)
+    shutil.copy2(root / "documentation/V6_TESTING.md", release / "README-TESTEN.md")
+    with target.open("rb") as executable:
+        checksum = hashlib.file_digest(executable, "sha256").hexdigest()
+    target.with_suffix(".sha256").write_text(f"{checksum}  {target.name}\n", encoding="ascii")
     print(f"Windows build: {target}")
 
 

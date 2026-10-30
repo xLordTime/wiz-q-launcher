@@ -312,6 +312,49 @@ BUILTINS = [
         True,
     ),
 ]
+# Preserve every existing theme ID; the three desktop presets are additional.
+DESKTOP_THEMES = [
+    Theme(
+        "aero-explorer",
+        "Aero Explorer",
+        "#e9edf4",
+        "#fbfcfe",
+        "#dbe6f3",
+        "#202b3a",
+        "#526174",
+        "#2e649e",
+        "#cfe3fd",
+        3,
+        spacing=5,
+    ),
+    Theme(
+        "graphit-werkbank",
+        "Graphit Werkbank",
+        "#292b2e",
+        "#202225",
+        "#35383d",
+        "#e5e5e3",
+        "#acaeb2",
+        "#dcb66b",
+        "#514631",
+        2,
+        spacing=4,
+    ),
+    Theme(
+        "arkaner-explorer",
+        "Arkaner Explorer",
+        "#292433",
+        "#211d2b",
+        "#37303f",
+        "#e8e1ee",
+        "#b5a8c0",
+        "#d0b473",
+        "#493955",
+        2,
+        "compass",
+        spacing=6,
+    ),
+]
 PATTERNS = {t.pattern for t in BUILTINS}
 
 
@@ -337,7 +380,7 @@ def validate_theme(data):
 
 
 def catalog(folder):
-    themes = list(BUILTINS)
+    themes = [*DESKTOP_THEMES, *BUILTINS]
     seen = {t.id for t in themes}
     for path in sorted(Path(folder).glob("*.json")):
         try:
@@ -366,42 +409,73 @@ def save_theme(theme, folder):
     return path
 
 
-def stylesheet(t, size=11):
+def stylesheet(t, size=9):
+    def mix(left, right, amount):
+        a, b = QColor(left), QColor(right)
+        return QColor(
+            *(round(x * (1 - amount) + y * amount) for x, y in zip(a.getRgb()[:3], b.getRgb()[:3]))
+        ).name()
+
+    edge = mix(t.panel, t.text, 0.26)
+    line = mix(t.panel, t.text, 0.13)
+    raised = mix(t.elevated, t.panel, 0.35)
+    shine = mix(t.elevated, t.text, 0.10)
+    alternate = mix(t.panel, t.background, 0.42)
+    selected_text = "#ffffff" if QColor(t.secondary).lightnessF() < 0.48 else "#142437"
+    primary_text = "#131922" if QColor(t.accent).lightnessF() > 0.55 else "#ffffff"
+    radius = min(t.radius, 3)
+    decoration = "QLabel#accountName { font-family: Georgia; }" if t.id == "arkaner-explorer" else ""
     return f"""
     QWidget {{ color: {t.text}; font-family: '{t.font}'; font-size: {size}pt; }}
-    QMainWindow, QDialog {{ background: {t.background}; }}
-    QWidget#sidebar, QFrame[panel='true'], QGroupBox {{ background: {t.panel}; border: 1px solid {t.elevated}; border-radius: {t.radius}px; }}
-    QFrame#hero {{ background: {t.panel}; border: 1px solid {t.secondary}; border-radius: {t.radius + 4}px; }}
+    QMainWindow, QDialog, QWidget#desktopBackground, QWidget#settingsBody {{ background: {t.background}; }}
     QLabel {{ background: transparent; border: none; }}
     QLabel[muted='true'] {{ color: {t.muted}; }}
-    QLabel#title {{ font-size: {size + 13}pt; font-weight: 700; }}
-    QLabel#heroTitle {{ font-size: {size + 18}pt; font-weight: 700; }}
-    QLabel#metric {{ font-size: {size + 9}pt; font-weight: 600; color: {t.accent}; }}
-    QPushButton, QToolButton {{ background: {t.elevated}; border: 1px solid transparent; border-radius: {max(3, t.radius - 3)}px; padding: 9px 14px; }}
-    QPushButton:hover, QToolButton:hover {{ border: 1px solid {t.accent}; }}
-    QPushButton:pressed {{ background: {t.secondary}; }}
-    QPushButton:disabled {{ color: {t.muted}; background: {t.panel}; }}
-    QPushButton[primary='true'] {{ background: {t.accent}; color: {t.background}; font-weight: 700; }}
-    QPushButton#nav {{ text-align: left; padding: 12px 18px; background: transparent; }}
-    QPushButton#nav:checked {{ background: {t.elevated}; border-left: 3px solid {t.accent}; }}
-    QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextBrowser {{ background: {t.panel}; border: 1px solid {t.elevated}; border-radius: {max(3, t.radius - 5)}px; padding: 9px; selection-background-color: {t.secondary}; }}
-    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPushButton:focus {{ border: 1px solid {t.accent}; }}
-    QComboBox QAbstractItemView, QMenu {{ background: {t.panel}; color: {t.text}; selection-background-color: {t.elevated}; border: 1px solid {t.secondary}; padding: 4px; }}
-    QMenu::item {{ padding: 8px 18px; }}
-    QListWidget, QTreeWidget, QTableWidget {{ background: {t.panel}; border: 1px solid {t.elevated}; border-radius: {t.radius}px; outline: none; }}
-    QListWidget::item, QTreeWidget::item {{ padding: {t.spacing}px; border-bottom: 1px solid {t.elevated}; }}
-    QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected {{ background: {t.elevated}; }}
-    QHeaderView::section {{ background: {t.elevated}; color: {t.muted}; border: none; padding: 10px; }}
-    QCheckBox {{ spacing: 9px; background: transparent; }}
-    QCheckBox::indicator {{ width: 17px; height: 17px; border: 1px solid {t.muted}; border-radius: 4px; background: {t.panel}; }}
-    QCheckBox::indicator:checked {{ background: {t.accent}; border: 1px solid {t.accent}; image: url(:/none); }}
-    QScrollArea, QStackedWidget {{ background: transparent; border: none; }}
-    QScrollBar:vertical {{ background: {t.background}; width: 9px; }}
-    QScrollBar::handle:vertical {{ background: {t.secondary}; min-height: 24px; border-radius: 4px; }}
-    QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
-    QToolTip {{ background: {t.elevated}; color: {t.text}; border: 1px solid {t.secondary}; padding: 6px; }}
-    QProgressBar {{ background: {t.elevated}; border: none; border-radius: 4px; text-align: center; }}
-    QProgressBar::chunk {{ background: {t.accent}; border-radius: 4px; }}
+    QLabel#title {{ font-size: {size + 3}pt; font-weight: 600; }}
+    QLabel#metric {{ font-size: {size + 2}pt; font-weight: 500; color: {t.accent}; }}
+    QLabel#accountName {{ color: {t.accent}; font-size: {size + 2}pt; font-weight: 500; }}
+    QFrame[panel='true'] {{ background: {t.panel}; border: 1px solid {edge}; border-radius: {radius}px; }}
+    QFrame#settingRow {{ background: {t.background}; border: none; border-bottom: 1px solid {line}; }}
+    QFrame#accountDetails {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 {t.elevated},stop:1 {t.background}); border: 1px solid {edge}; }}
+    QGroupBox {{ background: {t.panel}; border: 1px solid {edge}; border-radius: 2px; margin-top: 8px; padding-top: 3px; }}
+    QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left; left: 8px; padding: 0 4px; }}
+    QPushButton, QToolButton {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 {shine},stop:1 {raised}); border: 1px solid {edge}; border-radius: {radius}px; padding: 4px 9px; min-height: 17px; }}
+    QPushButton:hover, QToolButton:hover {{ border-color: {t.accent}; background: {t.secondary}; }}
+    QPushButton:pressed, QToolButton:pressed {{ background: {t.secondary}; }}
+    QPushButton:disabled, QToolButton:disabled {{ color: {t.muted}; }}
+    QPushButton[primary='true'] {{ background: {t.accent}; color: {primary_text}; border-color: {t.accent}; font-weight: 500; }}
+    QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextBrowser {{ background: {t.panel}; border: 1px solid {edge}; border-radius: 2px; padding: 4px 6px; selection-background-color: {t.secondary}; selection-color: {selected_text}; }}
+    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPushButton:focus {{ border-color: {t.accent}; }}
+    QComboBox {{ padding-right: 22px; }}
+    QComboBox QAbstractItemView, QMenu {{ background: {t.panel}; color: {t.text}; selection-background-color: {t.secondary}; selection-color: {selected_text}; border: 1px solid {edge}; padding: 3px; }}
+    QMenu::item {{ padding: 5px 24px 5px 23px; }}
+    QMenu::item:selected {{ background: {t.secondary}; color: {selected_text}; }}
+    QMenuBar {{ background: {t.background}; border-bottom: 1px solid {line}; }}
+    QMenuBar::item {{ padding: 4px 9px; background: transparent; }}
+    QMenuBar::item:selected {{ background: {t.secondary}; }}
+    QToolBar {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 {shine},stop:1 {t.elevated}); border-bottom: 1px solid {edge}; spacing: 3px; padding: 3px; }}
+    QToolBar QToolButton {{ background: transparent; border: 1px solid transparent; padding: 4px 7px; }}
+    QToolBar QToolButton:hover {{ background: {t.secondary}; border: 1px solid {edge}; }}
+    QToolBar::separator {{ width: 1px; margin: 3px 5px; background: {edge}; }}
+    QFrame#breadcrumb {{ background: {t.panel}; border: 1px solid {edge}; min-height: 29px; }}
+    QFrame#breadcrumb QToolButton {{ background: transparent; border: 1px solid transparent; padding: 3px 7px; }}
+    QFrame#breadcrumb QToolButton:hover {{ border: 1px solid {edge}; background: {t.secondary}; }}
+    QFrame#breadcrumb QLabel#pathSeparator {{ color: {t.muted}; padding: 0 2px; }}
+    QListWidget, QTreeWidget, QTableWidget {{ background: {t.panel}; alternate-background-color: {alternate}; border: 1px solid {edge}; border-radius: 0; selection-background-color: {t.secondary}; selection-color: {selected_text}; }}
+    QListWidget::item, QTreeWidget::item {{ padding: 4px 6px; }}
+    QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected {{ background: {t.secondary}; color: {selected_text}; }}
+    QTreeWidget#navigationTree::item {{ padding: 5px 3px; }}
+    QHeaderView::section {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 {shine},stop:1 {t.elevated}); color: {t.muted}; border: none; border-right: 1px solid {edge}; border-bottom: 1px solid {edge}; padding: 5px 7px; }}
+    QScrollArea, QStackedWidget {{ background: {t.background}; border: none; }}
+    QSplitter::handle {{ background: {t.background}; }}
+    QSplitter::handle:horizontal {{ width: 5px; }}
+    QSplitter::handle:vertical {{ height: 5px; }}
+    QStatusBar {{ background: {t.background}; border-top: 1px solid {edge}; }}
+    QStatusBar::item {{ border: none; }}
+    QStatusBar QLabel {{ font-size: {max(9, size - 1)}pt; padding: 2px 5px; }}
+    QToolTip {{ background: {t.elevated}; color: {t.text}; border: 1px solid {edge}; padding: 5px; }}
+    QProgressBar {{ background: {t.elevated}; border: 1px solid {edge}; text-align: center; }}
+    QProgressBar::chunk {{ background: {t.accent}; }}
+    {decoration}
     """
 
 

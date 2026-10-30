@@ -1,9 +1,9 @@
 # Wiz Q Launcher 6
 **Complete PySide6 rebuild — development beta on `Version-6.0`.**
 
-A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 20 themes, optional addons, Discord and a crash-resistant profile. This branch is not a stable replacement until real Windows/US/DE client tests have been completed.
+A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 3 desktop presets plus 20 themes, optional addons, Discord and a crash-resistant profile. This branch is not a stable replacement until real Windows/US/DE client tests have been completed.
 
-![PySide6 preview with synthetic example accounts](documentation/images/v6-preview.png)
+![PySide6 preview with synthetic example accounts](documentation/images/v6-aero-explorer.png)
 
 ## Start
 Windows users use the complete EXE from a successful **Version 6 Windows Build** artifact. Python and Rust are not required to run the EXE. No 6.0 stable release is published automatically.
@@ -17,6 +17,8 @@ First start:
 4. Add/select accounts and launch. F1 opens offline help.
 
 ## What is implemented
+- Native Explorer window, menu/toolbar, account and instance tables, resizable splitters.
+- Interactive breadcrumb menus synchronized with the tree, back/forward/up navigation.
 - Launch, Account Management, Playtime, Addons, Settings, Help.
 - Nickname/username/password, groups, drag & drop, favorites, saved launch selections.
 - SQLite WAL/FULL, serialized transactions, checked rotating snapshots, original-preserving restore.
@@ -25,11 +27,11 @@ First start:
 - PID + creation time session identity, heartbeat checkpoints and no offline credit after crashes.
 - Deimos-derived native start/login adapter, without a required wizwalker installation.
 - Discord RPC/yield-to-game and optional encrypted webhook.
-- Stat Monitor, Clips and Record (external FFmpeg), Theme Creator and 20 vector themes.
+- Stat Monitor, Clips and Record (external FFmpeg), Theme Creator, Aero Explorer/Graphit Werkbank/Arkaner Explorer and all 20 earlier themes.
 - Trusted custom addon workers and example SDK.
 - Explicit GitHub asset selection, size/SHA256 verification, restart helper and rollback snapshots.
 
-**Limits:** Native login, recording, global hotkeys and real EXE replacement need Windows validation. Imported region entries are not proof of current region/client compatibility. Steam is not yet a validated flow. The first beta UI is German; an imported English preference is retained for later translation. Updates currently rely on the HTTPS GitHub API asset digest; no separate publisher signature is configured. Custom code workers are not a security sandbox.
+**Limits:** Real game login, long recording sessions and global hotkeys need user/device validation. The Windows pipeline tests the packaged GUI and a real EXE exchange with data preservation. Imported region entries are not proof of current region/client compatibility. Steam is not yet a validated flow. The first beta UI is German; an imported English preference is retained for later translation. Updates currently rely on the HTTPS GitHub API asset digest; no separate publisher signature is configured. Custom code workers are not a security sandbox.
 
 ## Development on Windows
 Use Python 3.12 x64 and Rust stable (MSVC build tools).
@@ -51,10 +53,13 @@ QT_QPA_PLATFORM=offscreen python -m pytest -q
 A non-Windows run requires master-password protection and cannot launch Wizard101.
 
 `--safe-mode` disables addons/custom themes without resetting data.
+Alt+Left/Right navigates history, Alt+Up opens the parent, Alt+Home opens all accounts.
+F5 launches visible checked accounts; Ctrl+N adds an account and Ctrl+Shift+N opens Quicklaunch.
 Ctrl+1…6 changes page, Ctrl+L locks the vault, F1 opens Help, Ctrl+Q exits.
 Windows global hotkeys: Ctrl+Alt+L starts the selected accounts, Ctrl+Alt+C saves a replay clip. Occupied combinations are not taken from another app.
 
 ## Documentation
+- [Desktop beta test guide (Deutsch)](documentation/V6_TESTING.md)
 - [Beta status, tests and limits](documentation/V6_BETA.md)
 - [Full rebuild specification](documentation/VERSION_6_PLAN.md)
 - [Create addons](documentation/ADDON_SDK.md)

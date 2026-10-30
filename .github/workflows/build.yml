@@ -36,7 +36,7 @@ jobs:
         with:
           name: WizQLauncher-6.0-Windows-Beta
           path: |
-            release/*.exe
+            release/*
             test-results.xml
           if-no-files-found: error
 

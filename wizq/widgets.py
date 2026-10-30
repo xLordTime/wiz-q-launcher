@@ -10,7 +10,7 @@ class Button(QPushButton):
         super().__init__(text, parent)
         self.setCursor(__import__("PySide6.QtCore", fromlist=["Qt"]).Qt.CursorShape.PointingHandCursor)
         self.setProperty("primary", primary)
-        self.setMinimumHeight(38)
+        self.setMinimumHeight(26)
         self._hover = 0.0
         self.animation = QPropertyAnimation(self, b"hover", self)
         self.animation.setDuration(140)
@@ -52,7 +52,7 @@ class Button(QPushButton):
             c = QColor(QApplication.palette().highlight().color())
             c.setAlphaF(self._hover * 0.7)
             p.setPen(QPen(c, 1.5))
-            p.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 8, 8)
+            p.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 2, 2)
 
 
 class Combo(QComboBox):
@@ -81,14 +81,14 @@ def panel():
     frame = QFrame()
     frame.setProperty("panel", True)
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(18, 16, 18, 16)
-    layout.setSpacing(10)
+    layout.setContentsMargins(10, 9, 10, 9)
+    layout.setSpacing(6)
     return frame, layout
 
 
 def row(*widgets):
     layout = QHBoxLayout()
-    layout.setSpacing(10)
+    layout.setSpacing(6)
     for widget in widgets:
         layout.addWidget(widget)
     return layout
