@@ -1,5 +1,8 @@
-# 6.0.0-beta.2 implementation status
+# 6.0.0-beta.3 implementation status
 Updated 2026-10-30. The native desktop beta replaces the first web-like layout; it is not a stable release declaration.
+
+## Selection fix beta.3
+High-contrast active/inactive row selection across all themes; explicitly painted checkmarks; a Startauswahl text column, checked-row emphasis, detail confirmation and account count on the start button. Render tests inspect real checkbox pixels and unfocused row backgrounds in all 23 presets, plus contrast checks for custom themes.
 
 ## Desktop beta.2
 Native menu/toolbar, Explorer tree, interactive breadcrumb segment/dropdown navigation, shared back/forward/up history, compact account/instance tables, property dialogs, resizable/saved splitters and three additional desktop themes. Filtered-out checked accounts are remembered but never launched silently. Quicklaunch chooses a region independently of the account filter.
@@ -18,7 +21,7 @@ Qt tests instantiate all six pages, render all 20 previous themes and the three 
 ## Windows pipeline
 The native Rust/PyO3 adapter has compiled successfully on Windows; the first full Windows run passed 22 core/Qt/DPAPI/native tests and produced an EXE with working inherited stdin/stdout helper pipes.
 The branch workflow also exercises the packaged GUI and a real same-version EXE exchange/healthy restart against a disposable DPAPI profile, preserving synthetic credentials and settings, including Unicode/spaces/apostrophes in paths. This does not replace real game-client tests.
-Build artifacts are development downloads. Tag-based release workflow creates **draft** releases; it does not automatically publish a stable release.
+Build artifacts are development downloads. Explicit `release: ` commits on Version-6.0 and v6 tags run the release pipeline. Beta/alpha/RC releases publish after validation with the EXE, checksums and test guide. Stable versions remain drafts.
 
 ## Required before stable
 - Real US/DE and every advertised region/client version: install detection, spawn, login patterns, cleanup and multi-client matching.

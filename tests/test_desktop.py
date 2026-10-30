@@ -1,10 +1,11 @@
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QSpinBox
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QSpinBox, QStyleOptionViewItem
 
 from wizq.app import Window
 from wizq.desktop import Location
-from wizq.themes import DESKTOP_THEMES, catalog
+from wizq.selection import contrast, mix, selection_colors
+from wizq.themes import BUILTINS, DESKTOP_THEMES, catalog
 
 
 @pytest.fixture
@@ -33,6 +34,7 @@ def desktop(profile, monkeypatch):
     window.force_quit = True
     window.close()
     window.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
 
 
@@ -148,3 +150,63 @@ def test_desktop_presets_and_small_window_render(desktop):
         assert window.height() <= 700
         assert not window.grab().isNull()
         assert window.breadcrumb.buttons[0].isVisible()
+
+
+def test_selection_contrast_in_all_themes_and_low_contrast_custom_themes():
+    from dataclasses import replace
+
+    for theme in [*DESKTOP_THEMES, *BUILTINS]:
+        for candidate in (theme, replace(theme, accent=theme.panel)):
+            colors = selection_colors(candidate)
+            assert contrast(colors.background, theme.panel) >= 3
+            assert contrast(colors.background, mix(theme.panel, theme.background, 0.42)) >= 3
+            assert contrast(colors.background, colors.foreground) >= 4.5
+            assert contrast(colors.checked_background, colors.checked_foreground) >= 4.5
+
+
+def test_checkbox_and_unfocused_selection_are_rendered_in_every_theme(desktop):
+    window, app, *_ = desktop
+    view = window.launch_page.accounts
+    first, second = view.topLevelItem(0), view.topLevelItem(1)
+    for theme in [*DESKTOP_THEMES, *BUILTINS]:
+        window.store.set("theme", theme.id)
+        window.apply_theme()
+        colors = selection_colors(theme)
+        view.setCurrentItem(second)
+        first.setCheckState(0, Qt.CheckState.Unchecked)
+        app.processEvents()
+        index = view.indexFromItem(first, 0)
+        option = QStyleOptionViewItem()
+        option.initFrom(view)
+        option.widget = view
+        option.rect = view.visualRect(index)
+        box = view.itemDelegateForColumn(0).indicator_rect(option, index)
+        assert not box.isEmpty()
+        before = view.viewport().grab().toImage()
+        first.setCheckState(0, Qt.CheckState.Checked)
+        app.processEvents()
+        after = view.viewport().grab().toImage()
+        scale = after.devicePixelRatio()
+        inner = box.adjusted(3, 3, -3, -3)
+        tick_pixels = sum(
+            contrast(after.pixelColor(round(x * scale), round(y * scale)), colors.background) >= 4.5
+            for x in range(inner.left(), inner.right() + 1)
+            for y in range(inner.top(), inner.bottom() + 1)
+        )
+        assert tick_pixels >= 2, theme.id
+        assert before != after
+        assert first.text(1) == "Ausgewählt"
+        assert first.font(0).bold()
+        assert window.launch_page.launch_button.text() == "1 Account starten"
+        view.setCurrentItem(first)
+        window.launch_page.search.setFocus()
+        app.processEvents()
+        # The row must remain strongly highlighted after focus moves to the search box.
+        cell = view.visualRect(view.indexFromItem(first, 4))
+        image = view.viewport().grab().toImage()
+        actual = image.pixelColor(round((cell.right() - 8) * scale), round(cell.center().y() * scale))
+        assert actual.name() == colors.background, (theme.id, actual.name(), colors.background)
+        assert "Für den Start ausgewählt" in window.launch_page.detail_start.text()
+        first.setCheckState(0, Qt.CheckState.Unchecked)
+        assert first.text(1) == "—"
+        assert not window.launch_page.launch_button.isEnabled()

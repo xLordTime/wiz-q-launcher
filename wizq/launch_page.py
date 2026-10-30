@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from PySide6.QtCore import QSignalBlocker, Qt
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 from . import backend
 from .desktop import Location, desktop_icon
 from .pages import AccountDialog
+from .selection import AccountCheckDelegate, selection_colors
 from .sessions import duration
 from .settings import REGIONS, get
 from .widgets import Button, Combo, label, row
@@ -64,15 +66,18 @@ class LaunchPage(QWidget):
         body.addLayout(row(self.search, self.region))
         self.accounts = QTreeWidget()
         self.accounts.setObjectName("launchAccounts")
-        self.accounts.setHeaderLabels(["Nickname", "Region", "Gruppe", "Spielzeit"])
+        self.accounts.setHeaderLabels(["Nickname", "Startauswahl", "Region", "Gruppe", "Spielzeit"])
+        self.accounts.setItemDelegateForColumn(0, AccountCheckDelegate(self.accounts))
         self.accounts.setRootIsDecorated(False)
         self.accounts.setUniformRowHeights(True)
         self.accounts.setAlternatingRowColors(True)
         self.accounts.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.accounts.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.accounts.setAllColumnsShowFocus(True)
         self.accounts.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.accounts.setMinimumHeight(145)
         self.accounts.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column, width in ((1, 65), (2, 145), (3, 120)):
+        for column, width in ((1, 110), (2, 65), (3, 135), (4, 110)):
             self.accounts.setColumnWidth(column, width)
         self.accounts.setAccessibleName("Accounts – Checkboxen für die Startauswahl")
         self.accounts.itemChanged.connect(self.check_changed)
@@ -92,8 +97,10 @@ class LaunchPage(QWidget):
         detail_body.setSpacing(3)
         self.detail_name = label("Kein Account ausgewählt", name="accountName")
         self.detail_values = label("Account hinzufügen oder in der Liste auswählen.", muted=True)
+        self.detail_start = label("", name="startSelectionStatus")
         detail_body.addWidget(self.detail_name)
         detail_body.addWidget(self.detail_values)
+        detail_body.addWidget(self.detail_start)
         details_line.addLayout(detail_body, 1)
         details_line.addWidget(Button("Eigenschaften …", self.edit_current))
         body.addWidget(self.details)
@@ -210,6 +217,7 @@ class LaunchPage(QWidget):
                 item = QTreeWidgetItem(
                     [
                         ("★  " if a["favorite"] else "") + a["nickname"],
+                        "Ausgewählt" if a["id"] in self.checked else "—",
                         a["region"].upper(),
                         groups.get(a["group_id"], "Ohne Gruppe"),
                         duration(a["total_seconds"]),
@@ -223,6 +231,7 @@ class LaunchPage(QWidget):
                     0, Qt.CheckState.Checked if a["id"] in self.checked else Qt.CheckState.Unchecked
                 )
                 item.setIcon(0, desktop_icon("account"))
+                self.style_checked_item(item)
                 self.accounts.addTopLevelItem(item)
                 if a["id"] == ident:
                     self.accounts.setCurrentItem(item)
@@ -231,7 +240,7 @@ class LaunchPage(QWidget):
         self.accounts.setToolTip(
             "Accounts über Datei → Account hinzufügen anlegen."
             if not self.account_data
-            else "Checkboxen bestimmen die Startauswahl. Doppelklick öffnet Eigenschaften."
+            else "Die Zeilenmarkierung zeigt Accountdetails. Häkchen und Startauswahl bestimmen, welche Accounts starten."
         )
         self.show_details()
         self.update_selection_count()
@@ -244,15 +253,46 @@ class LaunchPage(QWidget):
         return [item.data(0, ROLE) for item in self.items() if item.checkState(0) == Qt.CheckState.Checked]
 
     def check_changed(self, item, column):
+        if column != 0:
+            return
         ident = item.data(0, ROLE)
         if item.checkState(0) == Qt.CheckState.Checked:
             self.checked.add(ident)
         else:
             self.checked.discard(ident)
+        with QSignalBlocker(self.accounts):
+            self.style_checked_item(item)
+        self.show_details()
         self.update_selection_count()
 
+    def style_checked_item(self, item):
+        checked = item.checkState(0) == Qt.CheckState.Checked
+        item.setText(1, "Ausgewählt" if checked else "—")
+        item.setToolTip(1, "Startet mit der Auswahl." if checked else "Nicht für den Start ausgewählt.")
+        font = self.accounts.font()
+        font.setBold(checked)
+        item.setFont(0, font)
+        item.setFont(1, font)
+        colors = selection_colors(self.window.theme) if hasattr(self.window, "theme") else None
+        for column in range(self.accounts.columnCount()):
+            item.setBackground(
+                column, QBrush(QColor(colors.checked_background)) if checked and colors else QBrush()
+            )
+            item.setForeground(
+                column, QBrush(QColor(colors.checked_foreground)) if checked and colors else QBrush()
+            )
+
+    def refresh_selection_style(self):
+        with QSignalBlocker(self.accounts):
+            for item in self.items():
+                self.style_checked_item(item)
+        self.accounts.viewport().update()
+
     def update_selection_count(self):
-        self.selection_count.setText(f"{len(self.selected_ids())} ausgewählt")
+        count = len(self.selected_ids())
+        self.selection_count.setText(f"{count} zum Starten")
+        self.launch_button.setText("1 Account starten" if count == 1 else f"{count} Accounts starten")
+        self.launch_button.setEnabled(count > 0)
 
     def select_all(self):
         for item in self.items():
@@ -271,6 +311,7 @@ class LaunchPage(QWidget):
         if not account:
             self.detail_name.setText("Kein Account ausgewählt")
             self.detail_values.setText("Account hinzufügen oder einen anderen Ordner wählen.")
+            self.detail_start.clear()
             return
         group = next(
             (
@@ -289,6 +330,11 @@ class LaunchPage(QWidget):
         self.detail_values.setText(
             f"{REGIONS.get(account['region'], account['region'])} · {group}\n"
             f"Spielzeit: {duration(account['total_seconds'])} · Zuletzt: {used}"
+        )
+        self.detail_start.setText(
+            "✓ Für den Start ausgewählt"
+            if account["id"] in self.selected_ids()
+            else "Nicht für den Start ausgewählt · Checkbox anklicken"
         )
 
     def edit_current(self):

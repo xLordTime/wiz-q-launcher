@@ -6,7 +6,7 @@ A local Windows launcher for Wizard101: multi-account launch, groups and drag & 
 ![PySide6 preview with synthetic example accounts](documentation/images/v6-aero-explorer.png)
 
 ## Start
-Windows users use the complete EXE from a successful **Version 6 Windows Build** artifact. Python and Rust are not required to run the EXE. No 6.0 stable release is published automatically.
+Windows users use the complete EXE from a successful **Version 6 Windows Build** artifact. Python and Rust are not required to run the EXE. Beta releases are available under Releases after the Windows checks pass; stable releases remain drafts.
 
 The first 5.x → 6.0 transition may download a new EXE and require starting it once. Subsequent 6.x updates use the new verified-download/relay flow. The profile remains in **%LOCALAPPDATA%/WizQLauncher**.
 
@@ -17,6 +17,7 @@ First start:
 4. Add/select accounts and launch. F1 opens offline help.
 
 ## What is implemented
+- Clear checked-account state with visible ticks, Startauswahl labels and high-contrast focused/unfocused selection in all themes.
 - Native Explorer window, menu/toolbar, account and instance tables, resizable splitters.
 - Interactive breadcrumb menus synchronized with the tree, back/forward/up navigation.
 - Launch, Account Management, Playtime, Addons, Settings, Help.

@@ -37,6 +37,7 @@ from .launch_page import LaunchPage
 from .migration import legacy_sources, migrate
 from .pages import AccountsPage, HelpPage, PlaytimePage
 from .paths import Paths, ProfileLock
+from .selection import selection_colors
 from .sessions import Sessions
 from .settings import get
 from .settings_page import SettingsPage
@@ -203,6 +204,7 @@ class Window(DesktopShell, QMainWindow):
         themes = BUILTINS if self.safe_mode else catalog(self.paths.directory("themes"))
         ident = "obsidian" if self.safe_mode else get(self.store, "theme")
         self.theme = next((t for t in themes if t.id == ident), BUILTINS[0])
+        selection = selection_colors(self.theme)
         palette = QApplication.palette()
         for role, color in (
             (QPalette.ColorRole.Window, self.theme.background),
@@ -211,8 +213,8 @@ class Window(DesktopShell, QMainWindow):
             (QPalette.ColorRole.AlternateBase, self.theme.background),
             (QPalette.ColorRole.Text, self.theme.text),
             (QPalette.ColorRole.Button, self.theme.elevated),
-            (QPalette.ColorRole.Highlight, self.theme.secondary),
-            (QPalette.ColorRole.HighlightedText, self.theme.text),
+            (QPalette.ColorRole.Highlight, selection.background),
+            (QPalette.ColorRole.HighlightedText, selection.foreground),
             (QPalette.ColorRole.ButtonText, self.theme.text),
             (QPalette.ColorRole.ToolTipBase, self.theme.elevated),
             (QPalette.ColorRole.ToolTipText, self.theme.text),
@@ -233,6 +235,7 @@ class Window(DesktopShell, QMainWindow):
             motion = motion and bool(enabled.value)
         Button.motion = motion
         self.desktop_theme_changed()
+        self.launch_page.refresh_selection_style()
 
     def addon_enabled(self, ident):
         return not self.safe_mode and self.store.get("addon:" + ident, True)

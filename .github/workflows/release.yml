@@ -2,10 +2,13 @@ name: Version 6 Release
 on:
   push:
     tags: ["v6*"]
+    branches: ["Version-6.0"]
 permissions:
   contents: write
 jobs:
   release:
+    # Explicit release commits can publish a tested beta without a manual binary upload.
+    if: startsWith(github.ref, 'refs/tags/v6') || startsWith(github.event.head_commit.message, 'release: ')
     runs-on: windows-latest
     env:
       QT_QPA_PLATFORM: offscreen
@@ -20,9 +23,20 @@ jobs:
           python -m pip install -r requirements-dev.txt
           python -m pip install ./native
       - name: Check tag matches application version
+        id: version
         shell: pwsh
         run: |
-          python -c "from wizq import __version__; import os; assert os.environ['GITHUB_REF_NAME'] == 'v' + __version__"
+          $appVersion = python -c "from wizq import __version__; print(__version__)"
+          $expectedTag = "v$appVersion"
+          $preRelease = python -c "from wizq import __version__; from packaging.version import Version; print(str(Version(__version__).is_prerelease).lower())"
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne $expectedTag) {
+            throw "Tag does not match application version."
+          }
+          if ($env:GITHUB_REF_TYPE -ne "tag" -and $preRelease -ne "true") {
+            throw "Branch releases are restricted to prereleases."
+          }
+          "tag=$expectedTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "prerelease=$preRelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Validate
         run: |
           python -m ruff check wizq main.py tests scripts/build.py
@@ -40,10 +54,13 @@ jobs:
           }
       - uses: softprops/action-gh-release@v2
         with:
-          draft: true
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') }}
-          generate_release_notes: true
-          files: |
-            release/*.exe
-            release/SHA256SUMS.txt
+          name: Wiz Q Launcher ${{ steps.version.outputs.tag }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          draft: ${{ steps.version.outputs.prerelease != 'true' }}
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          make_latest: false
+          overwrite_files: false
+          body_path: documentation/V6_RELEASE_NOTES.md
+          files: release/*
 

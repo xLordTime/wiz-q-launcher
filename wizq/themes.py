@@ -11,6 +11,8 @@ from PySide6.QtCore import QIODevice, QPointF, QSaveFile, Qt, QTimer
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from .selection import selection_colors
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -421,7 +423,9 @@ def stylesheet(t, size=9):
     raised = mix(t.elevated, t.panel, 0.35)
     shine = mix(t.elevated, t.text, 0.10)
     alternate = mix(t.panel, t.background, 0.42)
-    selected_text = "#ffffff" if QColor(t.secondary).lightnessF() < 0.48 else "#142437"
+    selection = selection_colors(t)
+    selected_text = selection.foreground
+    selected_background = selection.background
     primary_text = "#131922" if QColor(t.accent).lightnessF() > 0.55 else "#ffffff"
     radius = min(t.radius, 3)
     decoration = "QLabel#accountName { font-family: Georgia; }" if t.id == "arkaner-explorer" else ""
@@ -443,15 +447,15 @@ def stylesheet(t, size=9):
     QPushButton:pressed, QToolButton:pressed {{ background: {t.secondary}; }}
     QPushButton:disabled, QToolButton:disabled {{ color: {t.muted}; }}
     QPushButton[primary='true'] {{ background: {t.accent}; color: {primary_text}; border-color: {t.accent}; font-weight: 500; }}
-    QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextBrowser {{ background: {t.panel}; border: 1px solid {edge}; border-radius: 2px; padding: 4px 6px; selection-background-color: {t.secondary}; selection-color: {selected_text}; }}
+    QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextBrowser {{ background: {t.panel}; border: 1px solid {edge}; border-radius: 2px; padding: 4px 6px; selection-background-color: {selected_background}; selection-color: {selected_text}; }}
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPushButton:focus {{ border-color: {t.accent}; }}
     QComboBox {{ padding-right: 22px; }}
-    QComboBox QAbstractItemView, QMenu {{ background: {t.panel}; color: {t.text}; selection-background-color: {t.secondary}; selection-color: {selected_text}; border: 1px solid {edge}; padding: 3px; }}
+    QComboBox QAbstractItemView, QMenu {{ background: {t.panel}; color: {t.text}; selection-background-color: {selected_background}; selection-color: {selected_text}; border: 1px solid {edge}; padding: 3px; }}
     QMenu::item {{ padding: 5px 24px 5px 23px; }}
-    QMenu::item:selected {{ background: {t.secondary}; color: {selected_text}; }}
+    QMenu::item:selected {{ background: {selected_background}; color: {selected_text}; }}
     QMenuBar {{ background: {t.background}; border-bottom: 1px solid {line}; }}
     QMenuBar::item {{ padding: 4px 9px; background: transparent; }}
-    QMenuBar::item:selected {{ background: {t.secondary}; }}
+    QMenuBar::item:selected {{ background: {selected_background}; color: {selected_text}; }}
     QToolBar {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 {shine},stop:1 {t.elevated}); border-bottom: 1px solid {edge}; spacing: 3px; padding: 3px; }}
     QToolBar QToolButton {{ background: transparent; border: 1px solid transparent; padding: 4px 7px; }}
     QToolBar QToolButton:hover {{ background: {t.secondary}; border: 1px solid {edge}; }}
@@ -460,9 +464,10 @@ def stylesheet(t, size=9):
     QFrame#breadcrumb QToolButton {{ background: transparent; border: 1px solid transparent; padding: 3px 7px; }}
     QFrame#breadcrumb QToolButton:hover {{ border: 1px solid {edge}; background: {t.secondary}; }}
     QFrame#breadcrumb QLabel#pathSeparator {{ color: {t.muted}; padding: 0 2px; }}
-    QListWidget, QTreeWidget, QTableWidget {{ background: {t.panel}; alternate-background-color: {alternate}; border: 1px solid {edge}; border-radius: 0; selection-background-color: {t.secondary}; selection-color: {selected_text}; }}
+    QListWidget, QTreeWidget, QTableWidget {{ background: {t.panel}; alternate-background-color: {alternate}; border: 1px solid {edge}; border-radius: 0; selection-background-color: {selected_background}; selection-color: {selected_text}; }}
     QListWidget::item, QTreeWidget::item {{ padding: 4px 6px; }}
-    QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected {{ background: {t.secondary}; color: {selected_text}; }}
+    QListWidget::item:selected, QTreeWidget::item:selected, QTableWidget::item:selected,
+    QListWidget::item:selected:!active, QTreeWidget::item:selected:!active, QTableWidget::item:selected:!active {{ background: {selected_background}; color: {selected_text}; }}
     QTreeWidget#navigationTree::item {{ padding: 5px 3px; }}
     QHeaderView::section {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 {shine},stop:1 {t.elevated}); color: {t.muted}; border: none; border-right: 1px solid {edge}; border-bottom: 1px solid {edge}; padding: 5px 7px; }}
     QScrollArea, QStackedWidget {{ background: {t.background}; border: none; }}

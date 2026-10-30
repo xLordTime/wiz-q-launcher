@@ -1,4 +1,4 @@
-# Wiz Q Launcher 6.0.0-beta.2 testen
+# Wiz Q Launcher 6.0.0-beta.3 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
@@ -7,7 +7,7 @@ Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE ent
 1. Auf GitHub unter **Actions → Version 6 Windows Build** den erfolgreichen Lauf für **Version-6.0** öffnen.
 2. Das Artefakt **WizQLauncher-6.0-Windows-Beta** herunterladen und die ZIP-Datei entpacken.
 3. Den bisherigen Launcher über **Beenden** vollständig schließen. Das X kann ihn lediglich in den Tray verschieben.
-4. **WizQLauncher-v6.0.0-beta.2.exe** starten. Die Datei kann im Unterordner `release` der entpackten ZIP liegen.
+4. **WizQLauncher-v6.0.0-beta.3.exe** starten. Die Datei kann im Unterordner `release` der entpackten ZIP liegen.
 5. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
 6. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
@@ -24,13 +24,13 @@ Das Profil liegt unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert
 | Zurück / Vorwärts | Vorige bzw. nächste Ansicht im Navigationsverlauf |
 | Eine Ebene höher | Übergeordneten Bereich öffnen |
 | Rechtsklick auf Pfadleiste | Lesbaren Pfad kopieren |
-| Checkbox am Account | Account für den Start vormerken |
+| Checkbox am Account | Account für den Start vormerken; Haken, Startauswahl-Text und fette Schrift bestätigen die Auswahl |
 | Accountname / Doppelklick | Details anzeigen / Eigenschaften bearbeiten |
 | Datei → Leere Instanz | Quicklaunch mit Region und Instanzanzahl |
 | Einstellungen → Darstellung | Aero Explorer, Graphit Werkbank oder Arkaner Explorer wählen; alle 20 bisherigen Themes bleiben vorhanden |
 | Trennleisten | Baumansicht und Instanzbereich vergrößern/verkleinern; Aufteilung wird beim Beenden gespeichert |
 
-**Startauswahl:** Beim Filtern bleiben Checkboxen gemerkt. Gestartet werden ausschließlich die **sichtbaren, angekreuzten** Accounts. Ein Startprofil lässt sich unten über **Startprofil** speichern und laden.
+**Startauswahl:** Die Zeilenmarkierung zeigt den Account für die Detailansicht. Der Haken und der Text **Ausgewählt** bestimmen die Startauswahl. Der Startknopf nennt die Anzahl. Beim Filtern bleiben Checkboxen gemerkt. Gestartet werden ausschließlich die **sichtbaren, angekreuzten** Accounts. Ein Startprofil lässt sich unten über **Startprofil** speichern und laden.
 
 ## Sinnvolle erste Testrunde
 
