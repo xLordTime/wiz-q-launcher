@@ -3,6 +3,8 @@
 
 A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 20 themes, optional addons, Discord and a crash-resistant profile. This branch is not a stable replacement until real Windows/US/DE client tests have been completed.
 
+![PySide6 preview with synthetic example accounts](documentation/images/v6-preview.png)
+
 ## Start
 Windows users use the complete EXE from a successful **Version 6 Windows Build** artifact. Python and Rust are not required to run the EXE. No 6.0 stable release is published automatically.
 

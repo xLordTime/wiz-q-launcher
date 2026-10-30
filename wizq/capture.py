@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -96,9 +97,7 @@ class Capture(QObject):
         process.readyReadStandardError.connect(lambda: self._stderr(process))
         process.readyReadStandardOutput.connect(lambda: process.readAllStandardOutput())
         process.finished.connect(lambda code, _: self._finished(process, code))
-        process.errorOccurred.connect(
-            lambda _: self.changed.emit("Encoderfehler. FFmpeg-Pfad und unterstützte Geräte prüfen.")
-        )
+        process.errorOccurred.connect(lambda _: self._error(process))
         process.start(executable, args)
         self.janitor.start()
         self.changed.emit(
@@ -111,6 +110,11 @@ class Capture(QObject):
         self.last_error = (
             self.last_error + bytes(process.readAllStandardError()).decode("utf-8", errors="replace")
         )[-2000:]
+
+    def _error(self, process):
+        self.changed.emit("Encoderfehler. FFmpeg-Pfad und unterstützte Geräte prüfen.")
+        if process.state() == QProcess.ProcessState.NotRunning:
+            self._finished(process, 1)
 
     def _finished(self, process, code):
         if self.process is not process:
@@ -158,7 +162,12 @@ class Capture(QObject):
         snapshot.mkdir()
         try:
             for i, path in enumerate(files):
-                shutil.copy2(path, snapshot / f"segment-{i}.mkv")
+                # AppData normally resides on NTFS: a hardlink snapshots a
+                # closed segment instantly without copying a large clip in UI.
+                try:
+                    os.link(path, snapshot / f"segment-{i}.mkv")
+                except OSError:
+                    shutil.copy2(path, snapshot / f"segment-{i}.mkv")
             (snapshot / "list.txt").write_text(
                 "\n".join(f"file 'segment-{i}.mkv'" for i in range(len(files))), encoding="utf-8"
             )

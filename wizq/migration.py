@@ -51,8 +51,20 @@ def decode_accounts(source, password=None):
     if secret is None and cached:
         expiry = config.get("master_password_secret_expires", 0) or 0
         if mode == "local" or not expiry or time.time() < float(expiry):
-            raw = dpapi(base64.b64decode(cached, validate=True), decrypt=True)
-            secret = raw if mode == "local" else raw.decode("utf-8")
+            try:
+                raw = dpapi(base64.b64decode(cached, validate=True), decrypt=True)
+                secret = raw if mode == "local" else raw.decode("utf-8")
+            except (ValueError, RuntimeError, UnicodeError):
+                # A cached password from another PC is optional. The real old
+                # master password must still be usable without resetting data.
+                if mode == "local":
+                    raise ValueError(
+                        "Der alte lokale Schlüssel kann auf diesem Windows-Konto nicht entsperrt werden. Originaldateien bleiben erhalten."
+                    ) from None
+    if secret is None and mode == "local":
+        raise ValueError(
+            "Der lokale Schlüssel des Altprofils fehlt. Ein neues Masterpasswort kann ihn nicht ersetzen."
+        )
     if secret is None and mode == "placeholder":
         secret = "0"  # Decode-only compatibility; never used for the new vault.
     if secret is None:

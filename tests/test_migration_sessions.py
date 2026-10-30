@@ -81,6 +81,25 @@ def test_wrong_old_password_does_not_create_empty_migration(profile, tmp_path):
     assert store.get("legacy_migrated", meta=True) is None
 
 
+def test_unavailable_cached_windows_password_still_allows_master_password(profile, tmp_path, monkeypatch):
+    from wizq import migration
+
+    _, store, vault = profile
+    source = tmp_path / "old-other-pc"
+    legacy(source, [{"name": "A", "username": "U", "password": "P"}], password="correct old password")
+    config = json.loads((source / "config.json").read_text())
+    config["master_password_secret_b64"] = base64.b64encode(b"not-this-windows-account").decode()
+    (source / "config.json").write_text(json.dumps(config))
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("DPAPI unavailable")
+
+    monkeypatch.setattr(migration, "dpapi", fail)
+    with pytest.raises(PermissionError):
+        migrate(store, vault, source)
+    assert migrate(store, vault, source, "correct old password")["accounts"] == 1
+
+
 def test_invalid_second_account_rolls_back_entire_import(profile, tmp_path):
     _, store, vault = profile
     source = tmp_path / "old"

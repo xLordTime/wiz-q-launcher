@@ -220,7 +220,13 @@ def apply_worker(job):
         replaced = True
         info["state"] = "started"
         atomic_json(job, info)
-        proc = subprocess.Popen([str(target), "--profile", info["profile"], "--update-job", str(job)])
+        command = [str(target), "--profile", info["profile"], "--update-job", str(job)]
+        if info.get("smoke_test"):
+            command.append("--smoke-test")
+        proc = subprocess.Popen(command)
+        info["new_pid"] = proc.pid
+        info["new_created"] = psutil.Process(proc.pid).create_time()
+        atomic_json(job, info)
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             if json.loads(job.read_text(encoding="utf-8")).get("state") == "healthy":

@@ -692,7 +692,10 @@ def main(argv=None):
     parser.add_argument("--profile", type=Path)
     parser.add_argument("--safe-mode", action="store_true")
     parser.add_argument("--update-job", type=Path)
+    parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.smoke_test and args.profile is None:
+        parser.error("Smoke tests require an explicit disposable profile.")
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("WizQLauncher")
     app.setApplicationVersion(__version__)
@@ -739,6 +742,7 @@ def main(argv=None):
             return 0
         window = Window(paths, store, vault, args.safe_mode)
         window.show()
+        store.set("last_successful_version", __version__, meta=True)
         if not store.get("tutorial_seen", False):
             QTimer.singleShot(300, window.tutorial)
         if args.update_job:
@@ -747,6 +751,8 @@ def main(argv=None):
             )
         if get(store, "check_for_updates"):
             QTimer.singleShot(3000, window.settings_page.check_update)
+        if args.smoke_test:
+            QTimer.singleShot(1500, window.quit_app)
         result = app.exec()
         window.shutdown()
         store.backup(paths.directory("backups"), get(store, "backup_keep"))

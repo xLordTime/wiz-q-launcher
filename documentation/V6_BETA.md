@@ -11,7 +11,8 @@ Core tests include a killed subprocess during an uncommitted write; exact/idempo
 Qt tests instantiate all six pages, render all 20 themes and search Help. This is headless Qt rendering, not a Windows game session.
 
 ## Windows pipeline
-The branch workflow installs the native Rust/PyO3 adapter, runs tests, packages the complete windowed EXE and tests its inherited stdin/stdout helper pipes.
+The native Rust/PyO3 adapter has compiled successfully on Windows; the first full Windows run passed 22 core/Qt/DPAPI/native tests and produced an EXE with working inherited stdin/stdout helper pipes.
+The branch workflow also exercises the packaged GUI and a real same-version EXE exchange/healthy restart against a disposable DPAPI profile, preserving synthetic credentials and settings, including Unicode/spaces/apostrophes in paths. This does not replace real game-client tests.
 Build artifacts are development downloads. Tag-based release workflow creates **draft** releases; it does not automatically publish a stable release.
 
 ## Required before stable

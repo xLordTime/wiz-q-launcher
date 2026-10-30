@@ -1,6 +1,7 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from wizq.addon_pages import ThemeEditor
 from wizq.app import Window
 from wizq.themes import BUILTINS, validate_theme
 
@@ -32,6 +33,16 @@ def test_all_pages_themes_and_help_render(app, profile, tmp_path, monkeypatch):
             window.apply_theme()
             app.processEvents()
             assert not window.grab().isNull()
+        window.navigate(3)
+        for i in (1, 2, 3, 0):
+            window.addons_page.navigation.setCurrentRow(i)
+            app.processEvents()
+            assert not window.grab().isNull()
+        editor = ThemeEditor(window, BUILTINS[10])
+        editor.show()
+        app.processEvents()
+        assert not editor.grab().isNull()
+        editor.reject()
         window.help_page.open_topic("Passwort")
         assert window.help_page.topics.count() > 0
         window.navigate(0)
