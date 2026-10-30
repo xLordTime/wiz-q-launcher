@@ -8,13 +8,13 @@ fn launch(py: Python<'_>, path: String, server: String, region: String) -> PyRes
     py.allow_threads(|| launcher::launch_game(&path, &server, false, &region)).map_err(Into::into)
 }
 
-#[pyfunction]
-fn windows() -> Vec<(isize, u32)> {
+#[pyfunction(name = "windows")]
+fn list_windows() -> Vec<(isize, u32)> {
     launcher::get_wizard_handles().into_iter().map(|h| (h, launcher::get_window_pid(h))).collect()
 }
 
-#[pyfunction]
-fn login(py: Python<'_>, hwnd: isize, username: String, password: String) -> PyResult<()> {
+#[pyfunction(name = "login")]
+fn login_py(py: Python<'_>, hwnd: isize, username: String, password: String) -> PyResult<()> {
     if username.contains(['\n', '\r', '\0']) || password.contains(['\n', '\r', '\0']) {
         return Err(pyo3::exceptions::PyValueError::new_err("Unsupported control character in credentials"));
     }
@@ -24,7 +24,7 @@ fn login(py: Python<'_>, hwnd: isize, username: String, password: String) -> PyR
 #[pymodule]
 fn wizq_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(launch, m)?)?;
-    m.add_function(wrap_pyfunction!(windows, m)?)?;
-    m.add_function(wrap_pyfunction!(login, m)?)?;
+    m.add_function(wrap_pyfunction!(list_windows, m)?)?;
+    m.add_function(wrap_pyfunction!(login_py, m)?)?;
     Ok(())
 }
