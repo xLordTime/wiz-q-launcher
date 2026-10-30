@@ -1,16 +1,16 @@
-PySimpleGUI-4-foss==4.60.4.1
-cryptography==42.0.8
-# wizwalker — Wizard101 scripting library (Deimos fork, development branch)
-# Used for window discovery only (no game hooks).
-git+https://github.com/Vindaloniak/wizwalker
-psutil==5.9.8
-requests==2.31.0
-packaging==23.2
-pywin32>=307
-pypresence>=4.3.0
-# System-tray icon (optional — F4 falls back to minimize when not installed)
-pystray>=0.19.0
-Pillow>=10.0.0
-# Clip & Record extension — MP4 encoding (optional; falls back to PNG frames without it)
-opencv-python>=4.8.0
+# Windows/runtime dependencies. No PySimpleGUI, WebEngine or wizwalker.
+PySide6-Essentials==6.12.0
+shiboken6==6.12.0
+cryptography==50.0.2
+psutil==7.2.2
+requests==2.34.2
+packaging==26.3
+pypresence==4.6.2
+certifi==2026.10.19
+charset-normalizer==3.5.2
+idna==3.19
+urllib3==2.8.0
+cffi==2.1.1
+pycparser==3.11
+
 

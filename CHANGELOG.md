@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 6.0.0-beta.1 — complete PySide6 rebuild (development branch)
+
+- New Launch, Account Management, Playtime, Addons, Settings and offline Help pages.
+- Crash-resistant SQLite profile, authenticated vault, read-only legacy migration,
+  checked rotating snapshots, recovery and password-protected transport exports.
+- Twenty vector themes, reduced motion, live Theme Creator, Stat Monitor, segmented Replay/Record.
+- Explicit GitHub update asset/digest checks, EXE relay and program/data rollback snapshot.
+- Deimos-derived native launcher/login adapter, PID/creation-time session identity, Discord compatibility.
+- Windows build and helper-pipe tests; no stable release until real US/DE client validation.
+
 ## v5.5.1 (2026-08-12) - Theme-Creator Stability & Color Handling
 
 ### Fixed
@@ -313,3 +323,4 @@
 - Window title and foreground control for started clients
 - Configurable logging with rotating logs
 - PyInstaller and GitHub Actions build workflow
+

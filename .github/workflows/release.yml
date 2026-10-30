@@ -1,79 +1,49 @@
-name: Release
-
-# Triggered when a version tag is pushed: git tag v5.4.0 && git push origin v5.4.0
+name: Version 6 Release
 on:
   push:
-    tags:
-      - "v*"
-
+    tags: ["v6*"]
 permissions:
-  contents: write   # needed to create releases and upload assets
-
+  contents: write
 jobs:
-  build-and-release:
+  release:
     runs-on: windows-latest
-
+    env:
+      QT_QPA_PLATFORM: offscreen
     steps:
-      # ── 1. Source ──────────────────────────────────────────────────────────
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # ── 2. Python ──────────────────────────────────────────────────────────
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      # ── 3. Dependencies ────────────────────────────────────────────────────
-      - name: Install dependencies
+          python-version: "3.12"
+          cache: pip
+      - name: Install
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      # ── 4. Build .exe ──────────────────────────────────────────────────────
-      - name: Build executable with PyInstaller
+          python -m pip install -r requirements-dev.txt
+          python -m pip install ./native
+      - name: Check tag matches application version
+        shell: pwsh
         run: |
-          pyinstaller `
-            --noconfirm `
-            --onefile `
-            --windowed `
-            --name "WizQLauncher" `
-            --icon "icon.ico" `
-            --add-data "icon.ico;." `
-            --add-data "LICENSE;." `
-            --add-data "README.md;." `
-            --hidden-import "PySimpleGUI" `
-            --hidden-import "cryptography" `
-            --hidden-import "cryptography.hazmat.primitives.kdf.scrypt" `
-            --hidden-import "psutil" `
-            --hidden-import "requests" `
-            --hidden-import "packaging" `
-            --hidden-import "packaging.version" `
-            --hidden-import "pypresence" `
-            --hidden-import "pystray" `
-            --hidden-import "PIL" `
-            --hidden-import "PIL.Image" `
-            --hidden-import "win32gui" `
-            --hidden-import "win32con" `
-            --hidden-import "win32api" `
-            --hidden-import "winreg" `
-            --hidden-import "wizwalker" `
-            main.py
-
-      # ── 5. Rename artifact to include version tag ──────────────────────────
-      - name: Rename artifact
+          python -c "from wizq import __version__; import os; assert os.environ['GITHUB_REF_NAME'] == 'v' + __version__"
+      - name: Validate
         run: |
-          $tag = "${{ github.ref_name }}"
-          Move-Item "dist\WizQLauncher.exe" "dist\WizQLauncher-$tag.exe"
-
-      # ── 6. Create GitHub Release + upload .exe ─────────────────────────────
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+          python -m ruff check wizq main.py tests scripts/build.py
+          python -m pytest -q
+      - name: Package
+        run: |
+          python build.py
+          python -m scripts.smoke_frozen
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem release/*.exe | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Add-Content release/SHA256SUMS.txt
+          }
+      - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: "Wiz Q Launcher ${{ github.ref_name }}"
-          draft: false
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') }}
           generate_release_notes: true
-          files: dist/WizQLauncher-${{ github.ref_name }}.exe
+          files: |
+            release/*.exe
+            release/SHA256SUMS.txt
+

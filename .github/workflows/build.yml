@@ -1,34 +1,42 @@
-name: Build
-
+name: Version 6 Windows Build
 on:
   push:
-    branches: ["main"]
+    branches: ["Main", "Version-6.0"]
   pull_request:
-
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      - name: Install deps
+          python-version: "3.12"
+          cache: pip
+      - name: Install Python and native dependencies
+        shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build
+          python -m pip install -r requirements-dev.txt
+          python -m pip install ./native
+      - name: Lint
+        run: python -m ruff check wizq main.py tests scripts/build.py
+      - name: Test core and Qt
+        run: python -m pytest -q --junitxml=test-results.xml
+      - name: Build complete EXE
+        run: python build.py
+      - name: Smoke test windowed helper stdin pipes
+        shell: pwsh
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name "WizQLauncher" main.py
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          python -m scripts.smoke_frozen
+      - uses: actions/upload-artifact@v4
         with:
-          name: WizQLauncher
-          path: dist/WizQLauncher.exe
+          name: WizQLauncher-6.0-Windows-Beta
+          path: |
+            release/*.exe
+            test-results.xml
+          if-no-files-found: error
+

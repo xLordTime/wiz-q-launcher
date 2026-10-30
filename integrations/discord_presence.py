@@ -1,10 +1,8 @@
 """Discord Rich Presence with rolling 24h activity tracking."""
 
-import json
 import logging
 import time
-from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional
 
 DEFAULT_CLIENT_ID = "1433055168324173896"
 
@@ -29,137 +27,6 @@ def format_duration(seconds: float) -> str:
     if minutes > 0:
         return f"{minutes}m {secs}s"
     return f"{secs}s"
-
-
-class RollingActivity24h:
-    """Tracks active windows and computes union activity over the last 24 hours."""
-
-    def __init__(self, state_file: Path, window_seconds: int = 86400):
-        self.logger = logging.getLogger("discord_presence")
-        self.state_file = Path(state_file)
-        self.window_seconds = window_seconds
-        self.intervals: List[Tuple[float, float]] = []
-        self.active_since: Optional[float] = None
-        self._load()
-
-    def _load(self) -> None:
-        """Load persisted intervals from disk."""
-        if not self.state_file.exists():
-            return
-
-        try:
-            with self.state_file.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-
-            loaded = []
-            for item in data.get("intervals", []):
-                if not isinstance(item, list) or len(item) != 2:
-                    continue
-                start, end = float(item[0]), float(item[1])
-                if end > start:
-                    loaded.append((start, end))
-            self.intervals = loaded
-
-            active_since = data.get("active_since")
-            if active_since is not None:
-                # If the app crashed while tracking, close the interval at startup.
-                now = time.time()
-                start = float(active_since)
-                if now > start:
-                    self.intervals.append((start, now))
-                self.active_since = None
-
-            self._merge_intervals()
-            self._prune(time.time())
-            self._save()
-        except Exception as exc:
-            self.logger.warning("Failed to load activity tracker state: %s", exc)
-
-    def _save(self) -> None:
-        """Persist tracker state."""
-        try:
-            self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            payload = {
-                "intervals": [[start, end] for start, end in self.intervals],
-                "active_since": self.active_since,
-            }
-            with self.state_file.open("w", encoding="utf-8") as handle:
-                json.dump(payload, handle, indent=2)
-        except Exception as exc:
-            self.logger.debug("Failed to save activity tracker state: %s", exc)
-
-    def _merge_intervals(self) -> None:
-        """Merge overlapping or adjacent intervals."""
-        if not self.intervals:
-            return
-
-        merged = []
-        for start, end in sorted(self.intervals, key=lambda x: x[0]):
-            if not merged:
-                merged.append((start, end))
-                continue
-
-            last_start, last_end = merged[-1]
-            if start <= last_end + 1:
-                merged[-1] = (last_start, max(last_end, end))
-            else:
-                merged.append((start, end))
-
-        self.intervals = merged
-
-    def _prune(self, now: float) -> None:
-        """Keep only data relevant for the rolling window."""
-        cutoff = now - self.window_seconds
-        kept = []
-        for start, end in self.intervals:
-            if end <= cutoff:
-                continue
-            kept.append((max(start, cutoff), end))
-        self.intervals = kept
-
-    def set_active(self, is_active: bool, now: Optional[float] = None) -> None:
-        """Update active state; stores transitions only."""
-        if now is None:
-            now = time.time()
-
-        changed = False
-        if is_active and self.active_since is None:
-            self.active_since = now
-            changed = True
-        elif not is_active and self.active_since is not None:
-            if now > self.active_since:
-                self.intervals.append((self.active_since, now))
-            self.active_since = None
-            self._merge_intervals()
-            changed = True
-
-        self._prune(now)
-        if changed:
-            self._save()
-
-    def get_total_last_24h(self, now: Optional[float] = None) -> float:
-        """Return union active time over the last 24h."""
-        if now is None:
-            now = time.time()
-
-        cutoff = now - self.window_seconds
-        total = 0.0
-        for start, end in self.intervals:
-            overlap_start = max(start, cutoff)
-            overlap_end = min(end, now)
-            if overlap_end > overlap_start:
-                total += overlap_end - overlap_start
-
-        if self.active_since is not None:
-            overlap_start = max(self.active_since, cutoff)
-            if now > overlap_start:
-                total += now - overlap_start
-
-        return max(0.0, total)
-
-    def close(self) -> None:
-        """Finalize tracker state on shutdown."""
-        self.set_active(False)
 
 
 class DiscordRichPresence:
@@ -270,8 +137,7 @@ class DiscordRichPresence:
                     except Exception:
                         pass
                 self.logger.info(
-                    "Discord RPC yielded: %d Wizard101 session(s) active — "
-                    "game detection enabled",
+                    "Discord RPC yielded: %d Wizard101 session(s) active — game detection enabled",
                     active_sessions_count,
                 )
             self._log_skip_once(
@@ -291,9 +157,7 @@ class DiscordRichPresence:
 
         # ── Build presence strings ────────────────────────────────────────────
         total_acc_str = (
-            format_duration(total_account_playtime_seconds)
-            if total_account_playtime_seconds > 0
-            else None
+            format_duration(total_account_playtime_seconds) if total_account_playtime_seconds > 0 else None
         )
 
         details = "Wizard101 Launcher"
@@ -314,8 +178,7 @@ class DiscordRichPresence:
             "details": details,
             "state": state,
             "large_text": (
-                f"Region {str(region).upper()}  |  "
-                f"24h active: {format_duration(total_24h_seconds)}"
+                f"Region {str(region).upper()}  |  24h active: {format_duration(total_24h_seconds)}"
             ),
         }
 
@@ -360,5 +223,3 @@ class DiscordRichPresence:
         finally:
             self._connected = False
             self._rpc = None
-
-

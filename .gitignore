@@ -26,8 +26,13 @@ dist/
 zettel.txt
 zettel2.txt
 
-# Test files
-test_*.py
+# Tests are versioned. Only generated reports/caches are ignored.
+.pytest_cache/
+.ruff_cache/
+test-results.xml
+release/
+native/target/
+*.sqlite3*
 
 # OS
 .DS_Store
