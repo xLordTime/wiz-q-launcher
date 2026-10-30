@@ -143,6 +143,13 @@ def prepare_apply(paths, store, source, info):
     if shutil.disk_usage(target.parent).free < target.stat().st_size + info["size"] + 32 * 1024 * 1024:
         raise OSError("Zu wenig Speicher im Ordner der Launcher-EXE")
     job = updates / ("job-" + ident + ".json")
+    bootstrap = {}
+    try:
+        parent = psutil.Process().parent()
+        if parent is not None and Path(parent.exe()).resolve() == target:
+            bootstrap = {"bootstrap_pid": parent.pid, "bootstrap_created": parent.create_time()}
+    except psutil.Error:
+        pass
     atomic_json(
         job,
         {
@@ -154,6 +161,7 @@ def prepare_apply(paths, store, source, info):
             "created": psutil.Process().create_time(),
             "profile": str(paths.root.resolve()),
             "snapshot": str(snapshot.resolve()),
+            **bootstrap,
         },
     )
     subprocess.Popen(
@@ -167,6 +175,19 @@ def same_process(pid, created):
         return abs(psutil.Process(pid).create_time() - created) < 0.01
     except psutil.Error:
         return False
+
+
+def replace_executable(source, target):
+    """Onefile bootloaders/antivirus can release the executable a little later."""
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.25)
 
 
 def load_job(job):
@@ -199,7 +220,9 @@ def apply_worker(job):
     proc = None
     try:
         deadline = time.monotonic() + 120
-        while same_process(info["pid"], info["created"]):
+        while same_process(info["pid"], info["created"]) or (
+            info.get("bootstrap_pid") and same_process(info["bootstrap_pid"], info["bootstrap_created"])
+        ):
             if time.monotonic() > deadline:
                 raise TimeoutError("Alter Launcher läuft weiter")
             time.sleep(0.25)
@@ -216,7 +239,7 @@ def apply_worker(job):
             raise ValueError("Stagingprüfung fehlgeschlagen")
         info["state"] = "replacing"
         atomic_json(job, info)
-        os.replace(staged, target)
+        replace_executable(staged, target)
         replaced = True
         info["state"] = "started"
         atomic_json(job, info)
@@ -240,7 +263,7 @@ def apply_worker(job):
                 lock = ProfileLock(Path(info["profile"]))
                 try:
                     restore_backup(snapshot, Path(info["profile"]) / "data/launcher-v6.sqlite3")
-                    os.replace(previous, target)
+                    replace_executable(previous, target)
                 finally:
                     lock.close()
                 info["state"] = "rolled-back"
@@ -267,7 +290,9 @@ def apply_worker(job):
                 lock = ProfileLock(Path(info["profile"]))
                 try:
                     restore_backup(snapshot, Path(info["profile"]) / "data/launcher-v6.sqlite3")
-                    os.replace(Path(info["target"]).with_suffix(".previous.exe"), Path(info["target"]))
+                    replace_executable(
+                        Path(info["target"]).with_suffix(".previous.exe"), Path(info["target"])
+                    )
                     info["state"] = "rolled-back"
                 finally:
                     lock.close()

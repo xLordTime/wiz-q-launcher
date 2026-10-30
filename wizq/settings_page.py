@@ -364,6 +364,12 @@ class SettingsPage(QWidget):
 
     def apply_update(self):
         if self.update_info and self.update_path:
+            if self.window.launch_tasks:
+                self.window.notice(
+                    "Zuerst die laufenden Spielstarts abschließen lassen, dann das Update anwenden."
+                )
+                return
+            self.window.updating = True
             self.window.setEnabled(False)
             task = self.window.task(
                 lambda: updates.prepare_apply(
@@ -371,4 +377,9 @@ class SettingsPage(QWidget):
                 ),
                 lambda _: self.window.quit_app(),
             )
-            task.signals.error.connect(lambda _: self.window.setEnabled(True))
+
+            def failed(_):
+                self.window.updating = False
+                self.window.setEnabled(True)
+
+            task.signals.error.connect(failed)

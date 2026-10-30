@@ -129,6 +129,7 @@ class Window(QMainWindow):
         self.last_interaction = self.last_backup = time.monotonic()
         self.poll_pending = self.rpc_pending = False
         self.shutting_down = False
+        self.updating = False
         self.found = []
         self.setWindowTitle("Wiz Q Launcher · " + __version__)
         self.setWindowIcon(app_icon())
@@ -397,6 +398,9 @@ class Window(QMainWindow):
         self.store.set("tutorial_seen", True)
 
     def launch_accounts(self, accounts, region=None):
+        if self.updating:
+            self.notice("Ein Update wird vorbereitet. Neue Spielstarts sind bis zum Neustart pausiert.")
+            return
         self.launch_pool.setMaxThreadCount(get(self.store, "parallel_launches"))
         if len(self.launch_tasks) + len(accounts) > 32:
             self.notice("Maximal 32 Startaufträge gleichzeitig vormerken.")

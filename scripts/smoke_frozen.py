@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import psutil
@@ -64,7 +65,16 @@ def main():
         for path in (target, source, helper):
             shutil.copy2(exe, path)
         old = subprocess.Popen([str(target), "--profile", str(paths.root), "--smoke-test"])
-        created = psutil.Process(old.pid).create_time()
+        bootstrap_created = psutil.Process(old.pid).create_time()
+        child = None
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            children = psutil.Process(old.pid).children()
+            if children:
+                child = children[0]
+                break
+            time.sleep(0.05)
+        assert child is not None, "Onefile application process not found"
         job = paths.directory("updates") / "job-smoke.json"
         atomic_json(
             job,
@@ -73,8 +83,10 @@ def main():
                 "target": str(target),
                 "source": str(source),
                 "sha256": digest(source),
-                "pid": old.pid,
-                "created": created,
+                "pid": child.pid,
+                "created": child.create_time(),
+                "bootstrap_pid": old.pid,
+                "bootstrap_created": bootstrap_created,
                 "profile": str(paths.root),
                 "snapshot": str(snapshot),
                 "smoke_test": True,
