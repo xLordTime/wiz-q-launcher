@@ -33,9 +33,12 @@ def main():
         assert state["style"] & CAPTION and state["style"] & THICKFRAME
         assert not state["topmost"]
         assert api.rect(hwnd, client=True)[2:] == [640, 360], state
+        before_minimize = api.rect(hwnd)
         api.show(hwnd, "minimize")
         app.processEvents()
-        assert api.snapshot(hwnd)["placement"]["show"] in (2, 7)
+        minimized = api.snapshot(hwnd)
+        assert minimized["placement"]["show"] in (2, 7)
+        assert minimized["layout_rect"] == before_minimize, (minimized, before_minimize)
         api.show(hwnd, "restore")
         app.processEvents()
         api.restore(hwnd, original)

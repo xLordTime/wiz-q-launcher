@@ -369,7 +369,7 @@ class WindowManager:
                     continue
                 state = self.api.snapshot(instance["hwnd"])
                 config = {
-                    "rect": state["rect"],
+                    "rect": state.get("layout_rect", state["rect"]),
                     "mode": "borderless" if not state["style"] & 0x00C00000 else "windowed",
                     "topmost": state["topmost"],
                     "size_kind": "outer",

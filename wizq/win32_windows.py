@@ -158,11 +158,31 @@ class Win32Windows:
     def snapshot(self, hwnd):
         with self.physical():
             placement = self.placement(hwnd)
+            rect, exstyle = self.rect(hwnd), self.long(hwnd, -20)
+            layout_rect = list(rect)
+            if placement.showCmd in (2, 6, 7, 11):
+                layout_rect = as_rect(placement.rcNormalPosition)
+                # WINDOWPLACEMENT uses workspace coordinates for top-level
+                # non-tool windows; translate before using SetWindowPos later.
+                if not exstyle & 0x80:
+                    handle = self.fn("MonitorFromWindow", [wintypes.HWND, wintypes.DWORD], wintypes.HMONITOR)(
+                        hwnd, 2
+                    )
+                    info = MonitorInfo()
+                    info.cbSize = ctypes.sizeof(info)
+                    self.check(
+                        self.fn("GetMonitorInfoW", [wintypes.HMONITOR, ctypes.POINTER(MonitorInfo)])(
+                            handle, ctypes.byref(info)
+                        )
+                    )
+                    layout_rect[0] += info.rcWork.left - info.rcMonitor.left
+                    layout_rect[1] += info.rcWork.top - info.rcMonitor.top
             return {
                 "style": self.long(hwnd, -16),
-                "exstyle": self.long(hwnd, -20),
-                "rect": self.rect(hwnd),
-                "topmost": bool(self.long(hwnd, -20) & 8),
+                "exstyle": exstyle,
+                "rect": rect,
+                "layout_rect": layout_rect,
+                "topmost": bool(exstyle & 8),
                 "placement": {
                     "flags": placement.flags,
                     "show": placement.showCmd,

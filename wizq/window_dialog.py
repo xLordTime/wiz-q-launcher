@@ -406,7 +406,7 @@ class WindowDialog(QDialog):
                 "instance": instance,
                 "account_id": account_id,
                 "name": names.get(account_id, f"Instanz {instance['pid']}"),
-                "rect": actual["rect"],
+                "rect": actual.get("layout_rect", actual["rect"]),
                 "mode": "borderless" if not actual["style"] & 0x00C00000 else "unchanged",
                 "topmost": actual["topmost"],
                 "size_kind": "outer",
@@ -673,7 +673,10 @@ class WindowDialog(QDialog):
                 if entry["instance"] and self.manager.api.valid(entry["instance"]):
                     actual = self.manager.api.snapshot(entry["instance"]["hwnd"])
                     entry.update(
-                        rect=actual["rect"], topmost=actual["topmost"], mode="unchanged", size_kind="outer"
+                        rect=actual.get("layout_rect", actual["rect"]),
+                        topmost=actual["topmost"],
+                        mode="unchanged",
+                        size_kind="outer",
                     )
             self.to_custom()
             self.status.setText(

@@ -190,6 +190,13 @@ def test_settings_page_values_override_previous_arrangement_defaults(windows):
     assert preferences(store)["monitor"] == "left"
 
 
+def test_minimized_account_layout_saves_normal_geometry_instead_of_icon_coordinates(windows):
+    manager, api, store = windows
+    api.states[100].update(rect=[-32000, -32000, 160, 28], layout_rect=[100, 100, 960, 540])
+    assert manager.save_accounts([{"instance": api.instances[0], "account_id": "test-account"}]) == 1
+    assert store.get("window_placements")["test-account"]["rect"] == [100, 100, 960, 540]
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Real Win32 HWND, frame, client area and DPI")
 def test_native_window_frames_client_size_and_restore_without_a_game():
     env = {**os.environ, "QT_QPA_PLATFORM": "windows"}

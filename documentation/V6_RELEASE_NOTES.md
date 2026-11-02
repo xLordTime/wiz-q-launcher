@@ -1,5 +1,6 @@
-**Wiz Q Launcher 6.0.0-beta.5 – Fensterverwaltung**
+**Wiz Q Launcher 6.0.0-beta.6 – Fensterverwaltung**
 
+- Minimierte Clients behalten beim Speichern und Bearbeiten eines Layouts ihre normale Fensterposition und Größe, einschließlich der Taskleisten-Koordinatenumrechnung.
 - Neuer nativer Fensterdialog mit Monitorvorschau: Clients auswählen, sortieren, ziehen und skalieren. Erst **Anwenden** bewegt echte Fenster.
 - Mehr Layouts: automatisches/eigenes Raster, 2×2, nebeneinander, untereinander, Hauptfenster links/rechts/oben, Kaskade und Monitor füllen. Monitorwahl, Verteilung über mehrere Monitore, Taskleistenbereich, Abstände, Ränder und Proportionen sind einstellbar.
 - Eigene Positionen und Größen einschließlich negativer Bildschirmkoordinaten. Außenmaße und tatsächlicher Windows-Spielbereich sind getrennt; Größen-Presets bis 4K/Ultrawide, Zentrieren und rahmenloses Füllen.
@@ -10,7 +11,7 @@
 
 **Öffnen:** Launch → Laufende Instanzen → **Anordnen …** oder Extras → **Spielfenster anordnen**. Über **Fenster …** bei einem Account lässt sich seine Startvorgabe bearbeiten.
 
-**Update:** Einstellungen → Updates → Kanal **beta** → Nach Updates suchen → Herunterladen → Neustarten & anwenden. Alternativ `WizQLauncher-v6.0.0-beta.5.exe` herunterladen und nach dem Beenden der alten Version starten. Das vorhandene lokale Profil wird weiterverwendet.
+**Update:** Einstellungen → Updates → Kanal **beta** → Nach Updates suchen → Herunterladen → Neustarten & anwenden. Alternativ `WizQLauncher-v6.0.0-beta.6.exe` herunterladen und nach dem Beenden der alten Version starten. Das vorhandene lokale Profil wird weiterverwendet.
 
 **Spielgrafik:** Die neuen Maße betreffen Windows-Fenster und Spielbereich. Interne Renderauflösung und Kamera-Aspekt-Hooks aus Deimos sind nicht enthalten; bei gestrecktem Bild oder versetzten Klicks eine passende Auflösung im Spiel wählen und den Fenstermodus verwenden. Rahmenlose Fenster werden über den Launcher-Editor skaliert.
 

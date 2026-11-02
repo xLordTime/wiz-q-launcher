@@ -1,5 +1,8 @@
-# 6.0.0-beta.5 implementation status
+# 6.0.0-beta.6 implementation status
 Updated 2026-11-02. The native desktop beta replaces the first web-like layout; it is not a stable release declaration.
+
+## Minimized-client layout fix beta.6
+The editor and saved account templates use the restored client rectangle for minimized windows, translating workspace coordinates using the owning monitor work-area offset. Native Windows tests compare this geometry with the actual rectangle before minimizing.
 
 ## Window management beta.5
 Native monitor-map dialog with a drag/resize preview, selected-client ordering, monitor/work-area choice, grid/main-window/cascade/fill layouts, spacing/aspect options, custom outer/client sizes and per-window frame/topmost controls. Named profiles bind accounts by ID; offline account templates apply on launch. Legacy rectangle lists and borderless preferences remain readable. Missing-display restore recovers reachable geometry. Before changes, original and undo snapshots commit to SQLite; identity checks include process creation time and owning HWND/PID. Failed batches attempt rollback. Right-click instance controls cover minimize/maximize/restore and frame changes.
