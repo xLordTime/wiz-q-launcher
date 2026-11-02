@@ -1,11 +1,12 @@
 mod errors;
 mod launcher;
 mod login;
+mod patterns;
 use pyo3::prelude::*;
 
 #[pyfunction]
-fn launch(py: Python<'_>, path: String, server: String, region: String) -> PyResult<u32> {
-    py.allow_threads(|| launcher::launch_game(&path, &server, false, &region)).map_err(Into::into)
+fn launch(py: Python<'_>, path: String, server: String, language: String) -> PyResult<u32> {
+    py.allow_threads(|| launcher::launch_game(&path, &server, false, &language)).map_err(Into::into)
 }
 
 #[pyfunction(name = "windows")]

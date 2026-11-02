@@ -1,6 +1,7 @@
 // Derived from Deimos-Wizard101/Deimos-Wizard101 @ 99194d7d053b011f2db36bcc2d2bf6635acb7d7e
 // SPDX-License-Identifier: GPL-3.0-only. See LICENSE and PROVENANCE.md.
 use crate::errors::VaultError;
+use crate::patterns::{self, PatternError};
 use std::ffi::c_void;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -19,20 +20,6 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 
-// Pattern to locate the game's internal command dispatcher.
-// Matches: mov r9b,1 / xor r8d,r8d / lea rdx,[rbp-31h] / mov rcx,[rip+??]
-const LOGIN_PATTERN: &[u8] = &[
-    0x41, 0xB1, 0x01, 0x45, 0x33, 0xC0, 0x48, 0x8D, 0x55, 0xCF, 0x48, 0x8B, 0x0D,
-];
-
-// RootWindowHook injection-point pattern (wildcards = None).
-// 7 ?? bytes | 48 8B 01 | 7 ?? bytes | FF 50 70 84
-const HOOK_PATTERN: &[Option<u8>] = &[
-    None, None, None, None, None, None, None,
-    Some(0x48), Some(0x8B), Some(0x01),
-    None, None, None, None, None, None, None,
-    Some(0xFF), Some(0x50), Some(0x70), Some(0x84),
-];
 const HOOK_INSTR_LEN: usize = 7;
 
 // ── Remote process helpers ─────────────────────────────────────────
@@ -173,29 +160,6 @@ fn find_module(pid: u32, name: &str) -> Result<(u64, u32), VaultError> {
     Err(VaultError::LoginFailed(format!("Module '{name}' not found")))
 }
 
-// ── Pattern scanning ───────────────────────────────────────────────
-
-/// Exact-byte pattern scan.  Returns offset within `data`.
-fn scan_exact(data: &[u8], pattern: &[u8]) -> Option<usize> {
-    let mut matches = data.windows(pattern.len()).enumerate().filter(|(_, w)| *w == pattern);
-    let first = matches.next()?.0;
-    if matches.next().is_some() { return None; }
-    Some(first)
-}
-
-/// Wildcard pattern scan (None = any byte).  Returns offset within `data`.
-fn scan_wild(data: &[u8], pattern: &[Option<u8>]) -> Option<usize> {
-    let mut matches = data.windows(pattern.len()).enumerate().filter(|(_, window)| {
-        window.iter().zip(pattern.iter()).all(|(&b, pat)| match pat {
-            Some(expected) => b == *expected,
-            None => true,
-        })
-    });
-    let first = matches.next()?.0;
-    if matches.next().is_some() { return None; }
-    Some(first)
-}
-
 // ── Bytecode builder ───────────────────────────────────────────────
 
 /// Build the injected bytecode that:
@@ -323,23 +287,24 @@ pub fn login_to_instance(hwnd: isize, username: &str, password: &str) -> Result<
     // 4. Read module memory for pattern scanning
     let module_mem = proc.read(mod_base, mod_size as usize)?;
 
-    // 5. Find the login function via LOGIN_PATTERN
-    let login_offset = scan_exact(&module_mem, LOGIN_PATTERN)
-        .ok_or_else(|| VaultError::LoginFailed("LOGIN_PATTERN not found".into()))?;
-    let login_addr = mod_base + login_offset as u64;
+    // 5. Resolve the Deimos dispatcher after validating instruction boundaries,
+    // relative targets and uniqueness. Stack-local offsets can differ by client.
+    let pattern_error = |name: &str, error: PatternError| {
+        VaultError::LoginFailed(format!("{name} {}", match error {
+            PatternError::Missing => "not found",
+            PatternError::Ambiguous => "ambiguous",
+        }))
+    };
+    let site = patterns::login_site(&module_mem).map_err(|e| pattern_error("LOGIN_PATTERN", e))?;
+    let dat_addr = mod_base + site.dat_offset as u64;
+    let func_addr = mod_base + site.function_offset as u64;
+    let client = proc.read(dat_addr, 8)?;
+    if u64::from_le_bytes(client.try_into().unwrap()) == 0 {
+        return Err(VaultError::LoginFailed("CLIENT_NOT_READY".into()));
+    }
 
-    // Resolve dat (game-client pointer) and func (command dispatcher) via RIP-relative offsets
-    //   m+13: 4-byte disp for `mov rcx,[rip+disp]`  →  dat = m+17 + disp
-    //   m+18: 4-byte disp for `call rip+disp`        →  func = m+22 + disp
-    let t = proc.read(login_addr + 13, 9)?;
-    let dat_disp = i32::from_le_bytes(t[0..4].try_into().unwrap());
-    let func_disp = i32::from_le_bytes(t[5..9].try_into().unwrap());
-    let dat_addr = (login_addr as i64 + 17 + dat_disp as i64) as u64;
-    let func_addr = (login_addr as i64 + 22 + func_disp as i64) as u64;
-
-    // 6. Find the hook injection point via HOOK_PATTERN
-    let hook_offset = scan_wild(&module_mem, HOOK_PATTERN)
-        .ok_or_else(|| VaultError::LoginFailed("HOOK_PATTERN not found".into()))?;
+    // 6. Require RootWindowHook's actual mov rcx,[r15+disp32] instruction.
+    let hook_offset = patterns::hook_site(&module_mem).map_err(|e| pattern_error("HOOK_PATTERN", e))?;
     let hook_addr = mod_base + hook_offset as u64;
     let ret_addr = hook_addr + HOOK_INSTR_LEN as u64;
 

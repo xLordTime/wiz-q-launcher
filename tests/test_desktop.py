@@ -138,6 +138,42 @@ def test_quicklaunch_uses_the_chosen_region_and_count(desktop, monkeypatch):
     assert launched == [([None, None], "us")]
 
 
+def test_language_override_applies_to_accounts_and_empty_quicklaunch(desktop, monkeypatch):
+    window, app, *_ = desktop
+    launched = []
+    monkeypatch.setattr(window, "launch_accounts", lambda *args, **kwargs: launched.append((args, kwargs)))
+    language = window.launch_page.game_language
+    language.setCurrentIndex(language.findData("us"))
+    window.launch_page.select_all()
+    window.launch_page.launch_selected()
+    assert len(launched[0][0][0]) == 3
+    assert launched[0][1] == {"language": "us"}
+
+    def choose(dialog):
+        region, selected_language = dialog.findChildren(QComboBox)
+        region.setCurrentIndex(region.findData("de"))
+        assert selected_language.currentData() == "us"
+        selected_language.setCurrentIndex(selected_language.findData("fr"))
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", choose)
+    window.launch_page.empty_dialog()
+    assert launched[-1] == (([None], "de"), {"language": "fr"})
+    # Overrides are for this start; the saved region language stays untouched.
+    assert window.store.get("region_language_de") is None
+
+
+def test_per_region_language_has_readable_settings_and_survives_navigation(desktop):
+    window, app, *_ = desktop
+    control = window.settings_page.controls["region_language_de"]
+    control.setCurrentIndex(control.findData("us"))
+    assert window.store.get("region_language_de") == "us"
+    assert "English (US)" in control.currentText()
+    window.go(Location(0))
+    assert window.launch_page.game_language.currentData() is None
+    assert window.store.get("region_language_de") == "us"
+
+
 def test_desktop_presets_and_small_window_render(desktop):
     window, app, *_ = desktop
     assert len(catalog(window.paths.directory("themes"))) >= 23

@@ -11,6 +11,28 @@ REGIONS = {
     "gr": "Ελλάδα",
 }
 
+# Client resource locale, deliberately independent of the login server.
+# English (US) is the client's default and must omit -A entirely.
+GAME_LANGUAGES = {
+    "us": "English (US) · Standard",
+    "de": "Deutsch",
+    "fr": "Français",
+    "it": "Italiano",
+    "gb": "English (UK)",
+    "pl": "Polski",
+    "es": "Español",
+    "gr": "Ελληνικά",
+}
+
+
+def game_language(store, region, override=None):
+    if region not in REGIONS:
+        raise ValueError("Unbekannte Serverregion")
+    language = get(store, "region_language_" + region) if override is None else override
+    if language not in GAME_LANGUAGES:
+        raise ValueError("Unbekannte Spielsprache")
+    return language
+
 
 @dataclass(frozen=True)
 class Setting:
@@ -105,6 +127,15 @@ SETTINGS = [
         "Wartezeit auf das Fenster der exakt gestarteten Prozess-ID.",
         low=10,
         high=180,
+    ),
+    Setting(
+        "login_ready_timeout",
+        "Launcher & Regionen",
+        "Autologin: Initialisierung abwarten (Sekunden)",
+        15,
+        "Nach Erscheinen des Fensters wartet der Adapter auf den initialisierten Spielclient. Auf älteren PCs bei Bedarf erhöhen. Ein bereits gesendeter Login wird nicht wiederholt.",
+        low=2,
+        high=60,
     ),
     Setting(
         "set_window_title",
@@ -302,6 +333,14 @@ for code, title in REGIONS.items():
                 "Loginport des Serverprofils.",
                 low=1,
                 high=65535,
+            ),
+            Setting(
+                "region_language_" + code,
+                "Launcher & Regionen",
+                f"{code.upper()} · Spielsprache",
+                code,
+                "Sprache des Spielclients, unabhängig vom Loginserver und von der Launcher-Sprache. English (US) startet ohne -A; andere Sprachen verwenden -A mit dem Sprachcode. Die Installation muss die benötigten Sprachdateien enthalten.",
+                tuple(GAME_LANGUAGES),
             ),
         ]
     )

@@ -60,7 +60,10 @@ fn normalize_path(path: &str) -> PathBuf {
 /// Returns the spawned process ID. The client doesn't re-exec, so this PID owns
 /// the resulting game window — callers can match a new window back to the exact
 /// spawn via [`get_window_pid`].
-pub fn launch_game(game_path: &str, login_server: &str, steam: bool, region: &str) -> Result<u32, VaultError> {
+pub fn launch_game(game_path: &str, login_server: &str, steam: bool, language: &str) -> Result<u32, VaultError> {
+    if !matches!(language, "us" | "de" | "fr" | "it" | "gb" | "pl" | "es" | "gr") {
+        return Err(VaultError::LaunchFailed("Unsupported game language".into()));
+    }
     let bin_dir = normalize_path(game_path).join("Bin");
     let exe = bin_dir.join("WizardGraphicalClient.exe");
 
@@ -81,11 +84,9 @@ pub fn launch_game(game_path: &str, login_server: &str, steam: bool, region: &st
     if steam {
         cmd.arg("-ST");
     }
-    if region != "us" { cmd.arg("-A").arg(region); }
+    cmd.arg("-L").arg(host).arg(port);
+    if language != "us" { cmd.arg("-A").arg(language); }
     let child = cmd
-        .arg("-L")
-        .arg(host)
-        .arg(port)
         .current_dir(&bin_dir)
         .spawn()
         .map_err(|e| VaultError::LaunchFailed(e.to_string()))?;

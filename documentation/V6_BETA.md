@@ -1,5 +1,9 @@
-# 6.0.0-beta.3 implementation status
-Updated 2026-10-30. The native desktop beta replaces the first web-like layout; it is not a stable release declaration.
+# 6.0.0-beta.4 implementation status
+Updated 2026-11-02. The native desktop beta replaces the first web-like layout; it is not a stable release declaration.
+
+## Launch language and login beta.4
+Client resource language is independent of server region and launcher UI language, with a saved per-region default and a one-off override for account/empty launches. US English omits -A; other listed locales pass their language code. Existing region-language defaults are preserved. The shared launch route also covers profiles, F5 and global shortcuts.
+The adapter remains derived from Deimos wizlaunch at 99194d7d053b011f2db36bcc2d2bf6635acb7d7e (still the upstream head at review). Dispatcher scanning validates instructions and in-module RIP targets while permitting different stack-local displacements. RootWindowHook scanning validates its mov rcx,[r15+disp32] instruction instead of seven unrestricted bytes; distinct missing/ambiguous results still fail closed. Initialization retries happen only before dispatch. Input is restored on failure and the parent restores it after a terminated worker. Fixed allowlisted diagnostic codes cross the worker boundary, never raw exceptions. Native tests use synthetic instruction buffers, not live clients.
 
 ## Selection fix beta.3
 High-contrast active/inactive row selection across all themes; explicitly painted checkmarks; a Startauswahl text column, checked-row emphasis, detail confirmation and account count on the start button. Render tests inspect real checkbox pixels and unfocused row backgrounds in all 23 presets, plus contrast checks for custom themes.

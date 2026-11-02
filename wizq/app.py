@@ -356,7 +356,7 @@ class Window(DesktopShell, QMainWindow):
         dialog.exec()
         self.store.set("tutorial_seen", True)
 
-    def launch_accounts(self, accounts, region=None):
+    def launch_accounts(self, accounts, region=None, language=None):
         if self.updating:
             self.notice("Ein Update wird vorbereitet. Neue Spielstarts sind bis zum Neustart pausiert.")
             return
@@ -368,10 +368,12 @@ class Window(DesktopShell, QMainWindow):
         for index, account in enumerate(accounts):
             code = account["region"] if account else region
 
-            def start(a=account, c=code, delay=get(self.store, "launch_delay") if index else 0):
+            def start(
+                a=account, c=code, lang=language, delay=get(self.store, "launch_delay") if index else 0
+            ):
                 if delay:
                     time.sleep(delay)
-                return backend.launch(self.store, self.vault, c, a)
+                return backend.launch(self.store, self.vault, c, a, language=lang)
 
             self.run_task(Task(start), self.instance_started, launch=True)
 

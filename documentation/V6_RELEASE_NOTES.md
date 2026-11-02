@@ -1,15 +1,13 @@
-**Wiz Q Launcher 6.0.0-beta.3 – deutlich erkennbare Accountauswahl**
+**Wiz Q Launcher 6.0.0-beta.4 – Spielsprache und Autologin**
 
-- Die aktuelle Accountzeile ist in allen Themes kontrastreich markiert, auch wenn der Fokus zur Suche oder einem anderen Bedienelement wechselt.
-- Accounts in der Startauswahl haben einen gut sichtbaren Haken, einen getönten Hintergrund, fett gedruckte Namen und den Text **Ausgewählt** in der neuen Spalte **Startauswahl**.
-- Die Detailansicht bestätigt **Für den Start ausgewählt**. Der Startknopf zeigt die konkrete Anzahl, zum Beispiel **2 Accounts starten**.
-- Markierungs- und Textfarben werden auch für eigene Themes auf ausreichenden Kontrast abgestimmt.
-- Die bestehenden Funktionen, Daten und Startprofile bleiben erhalten. Beim Filtern werden weiterhin ausschließlich sichtbare, angekreuzte Accounts gestartet.
+- Spielsprache und Loginserver sind unabhängig: zum Beispiel DE mit US-Englisch ohne `-A` oder DE mit Deutsch über `-A de`.
+- Unter **Einstellungen → Launcher & Regionen → [Region] · Spielsprache** lässt sich die Sprache für jedes vorhandene Serverprofil speichern. Die Auswahl über der Accountliste und im Quicklaunch-Dialog kann sie für einen einzelnen Start überschreiben. Das gilt für Accounts, leere Instanzen, Startprofile und Shortcuts.
+- Verfügbar: US-Englisch, Deutsch, Französisch, Italienisch, UK-Englisch, Polnisch, Spanisch und Griechisch. Die Spielinstallation muss die gewählten Sprachdateien enthalten. Bestehende Standardsprachen bleiben erhalten.
+- Die Deimos-Start-/Loginlogik wurde erneut mit dem aktuellen Upstream verglichen. Die Mustersuche prüft jetzt die tatsächlichen Instruktionen und relative Ziele, erlaubt abweichende Stackpositionen und grenzt das bisher sehr breite Fenstermuster ein. Mehrdeutige Treffer werden weiterhin nicht verwendet.
+- Der Login wartet auf die Clientinitialisierung; die Wartezeit ist für langsamere PCs einstellbar. Bereits gesendete Anmeldungen werden nicht wiederholt. Die Fenstereingabe wird auch bei Fehlern wieder freigegeben.
+- Statt der bisherigen allgemeinen Meldung gibt es feste Fehlercodes für fehlende/mehrdeutige Muster, Berechtigungen, Initialisierung, Zeitüberschreitung und Hilfsprozessfehler. Zugangsdaten und rohe Fehlermeldungen werden nicht ausgegeben.
+- Accountauswahl, Themes und vorhandene Profildaten bleiben erhalten.
 
-**Installieren:** `WizQLauncher-v6.0.0-beta.3.exe` herunterladen, bisherigen Launcher über **Beenden** schließen und die neue EXE starten. Python und Rust sind nicht separat erforderlich. Das vorhandene AppData-Profil wird weiterverwendet.
+**Update:** Im vorhandenen 6.0-Launcher unter **Einstellungen → Updates** den Kanal **beta** wählen, **Nach Updates suchen → Herunterladen → Neustarten & anwenden**. Alternativ `WizQLauncher-v6.0.0-beta.4.exe` herunterladen, den alten Launcher über **Beenden** schließen und die neue EXE starten. Python/Rust sind nicht separat nötig.
 
-Für Aktualisierungen innerhalb von 6.0 steht unter **Einstellungen → Updates → Updatekanal** die Auswahl **beta** bereit. `README-TESTEN.md` und SHA256-Prüfsummen sind angehängt.
-
-Die Tests prüfen alle 23 mitgelieferten Themes einschließlich der tatsächlich gezeichneten Häkchen, der Markierung ohne Fokus und absichtlich kontrastarmer eigener Themes. Der Windows-Workflow erstellt und veröffentlicht die Beta erst nach Tests, EXE-Build und erfolgreicher Start-/Updateprüfung.
-
-Diese Version bleibt ein Prerelease. Die Anmeldung am aktuell installierten DE-/US-Spielclient und längere Aufnahmen benötigen weiterhin Praxistests. Clips/Aufnahmen setzen einen vorhandenen FFmpeg-Encoder voraus.
+Der Windows-Workflow prüft Python/Qt, native Muster mit synthetischen Daten, EXE-Build und den echten EXE-Austausch mit Datenerhalt vor der Veröffentlichung. Eine echte Anmeldung an den aktuellen DE-/US-Spielclients ist hier nicht möglich; die neue Diagnose zeigt bei verbleibenden Problemen den konkreten Fehlercode. Diese Version bleibt ein Prerelease. Clips/Aufnahmen benötigen einen vorhandenen FFmpeg-Encoder.

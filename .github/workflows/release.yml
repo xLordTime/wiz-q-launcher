@@ -41,6 +41,12 @@ jobs:
         run: |
           python -m ruff check wizq main.py tests scripts/build.py
           python -m pytest -q
+      - name: Test native login pattern validation
+        shell: pwsh
+        run: |
+          rustc --edition 2021 --test native/src/patterns.rs -o native-pattern-tests.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\native-pattern-tests.exe
       - name: Package
         run: |
           python build.py

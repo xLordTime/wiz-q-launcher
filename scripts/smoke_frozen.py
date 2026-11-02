@@ -38,6 +38,28 @@ def main():
         assert json.loads(result.stdout.strip())["text"] == "pipes-ok"
         assert not (root / "data/launcher-v6.sqlite3").exists()
     print("Frozen worker pipes OK")
+    result = subprocess.run(
+        [str(exe.resolve()), "--login-worker"],
+        input=json.dumps(
+            {
+                "hwnd": 0,
+                "pid": 4294967294,
+                "created": 0,
+                "username": "synthetic-user",
+                "password": "synthetic-password",
+            }
+        ),
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        timeout=30,
+        check=False,
+        creationflags=0x08000000,
+    )
+    assert result.returncode == 2, (result.returncode, result.stderr)
+    assert json.loads(result.stdout.strip()) == {"code": "identity"}
+    assert "synthetic-" not in result.stdout + result.stderr
+    print("Frozen login worker diagnostic pipes OK")
     with tempfile.TemporaryDirectory() as folder:
         # Exercise Unicode, spaces and an apostrophe without a command shell.
         root = Path(folder) / "Launcher's Test – Ordner"

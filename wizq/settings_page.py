@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import backend, updates
-from .settings import SETTINGS, get, set_value
+from .settings import GAME_LANGUAGES, SETTINGS, get, set_value
 from .storage import Store
 from .themes import catalog
 from .vault import Vault
@@ -75,7 +75,8 @@ class SettingsPage(QWidget):
             elif spec.choices:
                 control = Combo()
                 for choice in spec.choices:
-                    control.addItem(str(choice), choice)
+                    title = GAME_LANGUAGES[choice] if spec.key.startswith("region_language_") else str(choice)
+                    control.addItem(title, choice)
                 control.setCurrentIndex(max(0, control.findData(value)))
                 control.currentIndexChanged.connect(
                     lambda _, k=spec.key, c=control: self.save(k, c.currentData())

@@ -32,7 +32,7 @@ from .desktop import Location, desktop_icon
 from .pages import AccountDialog
 from .selection import AccountCheckDelegate, selection_colors
 from .sessions import duration
-from .settings import REGIONS, get
+from .settings import GAME_LANGUAGES, REGIONS, game_language, get
 from .widgets import Button, Combo, label, row
 
 ROLE = Qt.ItemDataRole.UserRole
@@ -63,7 +63,15 @@ class LaunchPage(QWidget):
         self.region.setMaximumWidth(225)
         # The group control is also the controller for the tree and path menus.
         self.group.hide()
-        body.addLayout(row(self.search, self.region))
+        self.game_language = Combo()
+        self.game_language.addItem("Sprache: Serverprofil", None)
+        for code, title in GAME_LANGUAGES.items():
+            self.game_language.addItem(title, code)
+        self.game_language.setAccessibleName("Spielsprache für die Startauswahl")
+        self.game_language.setToolTip(
+            "Gilt für alle ausgewählten Accounts. Serverprofil verwendet die Sprache der jeweiligen Region aus den Einstellungen."
+        )
+        body.addLayout(row(self.search, self.region, self.game_language))
         self.accounts = QTreeWidget()
         self.accounts.setObjectName("launchAccounts")
         self.accounts.setHeaderLabels(["Nickname", "Startauswahl", "Region", "Gruppe", "Spielzeit"])
@@ -362,7 +370,12 @@ class LaunchPage(QWidget):
             return
         if self.window.ensure_unlocked():
             self.window.store.set("last_launch_selection", ids)
-            self.window.launch_accounts([a for a in self.window.store.accounts() if a["id"] in ids])
+            accounts = [a for a in self.window.store.accounts() if a["id"] in ids]
+            language = self.game_language.currentData()
+            if language is None:
+                self.window.launch_accounts(accounts)
+            else:
+                self.window.launch_accounts(accounts, language=language)
 
     def empty_dialog(self):
         dialog = QDialog(self.window)
@@ -380,7 +393,26 @@ class LaunchPage(QWidget):
         count = QSpinBox()
         count.setRange(1, 8)
         count.setValue(self.count.value())
+        language = Combo()
+        language.setAccessibleName("Quicklaunch-Spielsprachwahl")
+        language.addItem("Sprache des Serverprofils", None)
+        for code, title in GAME_LANGUAGES.items():
+            language.addItem(title, code)
+        language.setCurrentIndex(max(0, language.findData(self.game_language.currentData())))
+        profile_language = label("", muted=True)
+
+        def show_language():
+            selected_language = language.currentData()
+            if selected_language is None:
+                selected_language = game_language(self.window.store, region.currentData())
+            profile_language.setText("Verwendete Spielsprache: " + GAME_LANGUAGES[selected_language])
+
+        region.currentIndexChanged.connect(show_language)
+        language.currentIndexChanged.connect(show_language)
+        show_language()
         form.addRow("Region / Serverprofil", region)
+        form.addRow("Spielsprache", language)
+        form.addRow("", profile_language)
         form.addRow("Anzahl Instanzen", count)
         layout.addLayout(form)
         layout.addWidget(label("Öffnet den Spielclient ohne gespeicherte Zugangsdaten.", muted=True))
@@ -394,7 +426,11 @@ class LaunchPage(QWidget):
         layout.addWidget(buttons)
         if dialog.exec():
             self.count.setValue(count.value())
-            self.window.launch_accounts([None] * count.value(), region.currentData())
+            args = ([None] * count.value(), region.currentData())
+            if language.currentData() is None:
+                self.window.launch_accounts(*args)
+            else:
+                self.window.launch_accounts(*args, language=language.currentData())
 
     def launch_empty(self):
         self.empty_dialog()

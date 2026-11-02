@@ -24,6 +24,12 @@ jobs:
           python -m pip install ./native
       - name: Lint
         run: python -m ruff check wizq main.py tests scripts/build.py
+      - name: Test native login pattern validation
+        shell: pwsh
+        run: |
+          rustc --edition 2021 --test native/src/patterns.rs -o native-pattern-tests.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\native-pattern-tests.exe
       - name: Test core and Qt
         run: python -m pytest -q --junitxml=test-results.xml
       - name: Build complete EXE

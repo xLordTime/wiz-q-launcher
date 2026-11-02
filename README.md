@@ -27,6 +27,7 @@ First start:
 - Read-only import of the 5.5.1 encrypted formats and historical playtime totals.
 - PID + creation time session identity, heartbeat checkpoints and no offline credit after crashes.
 - Deimos-derived native start/login adapter, without a required wizwalker installation.
+- Independent server and game language for every launch; per-region defaults, one-off overrides and credential-free login diagnostics.
 - Discord RPC/yield-to-game and optional encrypted webhook.
 - Stat Monitor, Clips and Record (external FFmpeg), Theme Creator, Aero Explorer/Graphit Werkbank/Arkaner Explorer and all 20 earlier themes.
 - Trusted custom addon workers and example SDK.
