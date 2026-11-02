@@ -111,6 +111,7 @@ class LaunchPage(QWidget):
         detail_body.addWidget(self.detail_start)
         details_line.addLayout(detail_body, 1)
         details_line.addWidget(Button("Eigenschaften …", self.edit_current))
+        details_line.addWidget(Button("Fenster …", self.edit_window))
         body.addWidget(self.details)
         self.splitter.addWidget(accounts_area)
         instances = QGroupBox("Laufende Instanzen")
@@ -126,12 +127,15 @@ class LaunchPage(QWidget):
         for col, width in ((1, 65), (2, 110), (3, 110), (4, 65)):
             self.running.setColumnWidth(col, width)
         self.running.itemDoubleClicked.connect(lambda *_: self.focus())
+        self.running.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.running.customContextMenuRequested.connect(self.instance_menu)
         instances_body.addWidget(self.running, 1)
         tools = QToolBar("Instanzwerkzeuge")
         tools.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         for text, icon, callback in (
             ("Fokussieren", "window", self.focus),
-            ("Anordnen", "window", window.arrange_windows),
+            ("Anordnen …", "window", window.arrange_windows),
+            ("Fenster …", "edit", self.edit_instance_window),
             ("Layout speichern", "save", window.save_layout),
             ("Account zuordnen", "account", self.assign),
             ("Neue Instanz …", "add", self.empty_dialog),
@@ -466,7 +470,68 @@ class LaunchPage(QWidget):
         return item.data(0, ROLE)
 
     def focus(self):
-        self.window.guard(lambda: backend.focus(self.current_instance()["hwnd"]))
+        def act():
+            instance = self.current_instance()
+            if not self.window.window_manager.api.valid(instance):
+                raise ValueError("Dieser Spielclient ist nicht mehr verfügbar.")
+            backend.focus(instance["hwnd"])
+
+        self.window.guard(act)
+
+    def instance_menu(self, position):
+        item = self.running.itemAt(position)
+        if not item:
+            return
+        self.running.setCurrentItem(item)
+        instance = item.data(0, ROLE)
+        manager = self.window.window_manager
+        menu = QMenu(self)
+        menu.addAction("Fokussieren", self.focus)
+        menu.addAction("Position / Größe / Rahmen …", self.edit_instance_window)
+        menu.addSeparator()
+        for title, action in (
+            ("Minimieren", "minimize"),
+            ("Maximieren", "maximize"),
+            ("Normal wiederherstellen", "restore"),
+        ):
+            menu.addAction(title, lambda _, a=action: self.window.task(lambda: manager.show(instance, a)))
+        menu.addSeparator()
+        for title, mode in (("Rahmenlos", "borderless"), ("Mit skalierbarem Rahmen", "windowed")):
+            menu.addAction(title, lambda _, m=mode: self.change_instance_frame(instance, m))
+        menu.addAction(
+            "Originalzustand wiederherstellen", lambda: self.window.task(lambda: manager.restore([instance]))
+        )
+        menu.exec(self.running.viewport().mapToGlobal(position))
+
+    def change_instance_frame(self, instance, mode):
+        def act():
+            manager = self.window.window_manager
+            if not manager.api.valid(instance):
+                raise ValueError("Dieser Spielclient ist nicht mehr verfügbar.")
+            snapshot = manager.api.snapshot(instance["hwnd"])
+            manager.apply(
+                [
+                    {
+                        "entry": {"instance": instance},
+                        "rect": snapshot["rect"],
+                        "mode": mode,
+                        "topmost": None,
+                        "size_kind": "outer",
+                    }
+                ]
+            )
+
+        self.window.task(act)
+
+    def edit_window(self):
+        account = self.current_account()
+        if account:
+            self.window.open_window_editor(account=account)
+        else:
+            self.window.notice("Zuerst einen Account auswählen.")
+
+    def edit_instance_window(self):
+        self.window.guard(lambda: self.window.open_window_editor(instance=self.current_instance()))
 
     def assign(self):
         def act():
@@ -483,6 +548,7 @@ class LaunchPage(QWidget):
                     self.window.sessions.start(*identity, instance["hwnd"], a["region"], a["id"])
                 else:
                     self.window.sessions.assign(*identity, a["id"])
+                self.window.window_manager.bind(instance, a["id"])
                 self.window.poll()
 
         self.window.guard(act)

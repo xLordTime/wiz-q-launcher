@@ -149,8 +149,20 @@ SETTINGS = [
         "Fenster & Shortcuts",
         "Fensteranordnung",
         "2x2",
-        "Aktive Instanzen auf dem Hauptbildschirm anordnen. Fensterpositionen lassen sich zusätzlich speichern.",
-        ("2x2", "horizontal", "vertical"),
+        "Im Fensterdialog Monitor, Abstände, Raster und Hauptfenster festlegen. Das Raster erweitert sich bei Bedarf, damit kein gewählter Client ausgelassen wird.",
+        (
+            "auto",
+            "2x2",
+            "horizontal",
+            "vertical",
+            "grid",
+            "main-left",
+            "main-right",
+            "main-top",
+            "cascade",
+            "fill",
+            "custom",
+        ),
     ),
     Setting(
         "borderless",
@@ -158,6 +170,32 @@ SETTINGS = [
         "Rahmenlose Fenster beim Anordnen",
         False,
         "Entfernt die Titelleiste bei der Anordnung. Normale Fensterrahmen lassen sich über dieselbe Einstellung wiederherstellen.",
+    ),
+    Setting(
+        "window_mode",
+        "Fenster & Shortcuts",
+        "Fenstermodus",
+        "windowed",
+        "Fenster mit skalierbarem Rahmen, rahmenlos oder vorhandenen Rahmen beibehalten. Der Originalzustand lässt sich im Fensterdialog wiederherstellen.",
+        ("windowed", "borderless", "unchanged"),
+    ),
+    Setting(
+        "window_gap",
+        "Fenster & Shortcuts",
+        "Abstand zwischen Fenstern (Pixel)",
+        8,
+        "Freier Abstand beim automatischen Anordnen in physischen Bildschirmpixeln.",
+        low=0,
+        high=200,
+    ),
+    Setting(
+        "window_margin",
+        "Fenster & Shortcuts",
+        "Rand zum Bildschirm (Pixel)",
+        8,
+        "Rand zur Arbeitsfläche bzw. zum gewählten Monitor. Die Taskleiste kann im Fensterdialog berücksichtigt werden.",
+        low=0,
+        high=200,
     ),
     Setting(
         "auto_playtime_tracking",
@@ -350,6 +388,8 @@ BY_KEY = {s.key: s for s in SETTINGS}
 
 def get(store, key):
     spec = BY_KEY[key]
+    if key == "window_mode" and store.get(key) is None:
+        return "borderless" if store.get("borderless", False) else spec.default
     return store.get(key, spec.default)
 
 
@@ -366,3 +406,5 @@ def set_value(store, key, value):
     ):
         raise ValueError("Nur Serverhostname ohne Port oder Pfad eingeben")
     store.set(key, value)
+    if key == "borderless":
+        store.set("window_mode", "borderless" if value else "windowed")

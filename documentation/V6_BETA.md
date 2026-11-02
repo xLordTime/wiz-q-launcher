@@ -1,5 +1,9 @@
-# 6.0.0-beta.4 implementation status
+# 6.0.0-beta.5 implementation status
 Updated 2026-11-02. The native desktop beta replaces the first web-like layout; it is not a stable release declaration.
+
+## Window management beta.5
+Native monitor-map dialog with a drag/resize preview, selected-client ordering, monitor/work-area choice, grid/main-window/cascade/fill layouts, spacing/aspect options, custom outer/client sizes and per-window frame/topmost controls. Named profiles bind accounts by ID; offline account templates apply on launch. Legacy rectangle lists and borderless preferences remain readable. Missing-display restore recovers reachable geometry. Before changes, original and undo snapshots commit to SQLite; identity checks include process creation time and owning HWND/PID. Failed batches attempt rollback. Right-click instance controls cover minimize/maximize/restore and frame changes.
+The Windows pipeline exercises real Win32 HWNDs in a disposable Qt process: monitor enumeration, border removal/restoration, exact client-area sizing, DPI conversion, topmost and minimize/restore. This is separate from game rendering: the in-game backbuffer/camera hooks in Deimos are not included; users choose internal graphics resolution in the game. No persistent game-memory resizing hooks or wizwalker runtime dependency are introduced.
 
 ## Launch language and login beta.4
 Client resource language is independent of server region and launcher UI language, with a saved per-region default and a one-off override for account/empty launches. US English omits -A; other listed locales pass their language code. Existing region-language defaults are preserved. The shared launch route also covers profiles, F5 and global shortcuts.

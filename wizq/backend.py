@@ -141,34 +141,15 @@ def set_title(hwnd, nickname):
 
 
 def placement(hwnd, rect, borderless=False):
-    getter = user_function("GetWindowLongPtrW", [ctypes.c_void_p, ctypes.c_int], ctypes.c_ssize_t)
-    setter = user_function(
-        "SetWindowLongPtrW", [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t], ctypes.c_ssize_t
-    )
-    style = getter(hwnd, -16)
-    mask = 0x00C00000 | 0x00040000
-    setter(hwnd, -16, style & ~mask if borderless else style | mask)
-    x, y, w, h = map(int, rect)
-    user_function(
-        "SetWindowPos",
-        [
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_uint,
-        ],
-    )(hwnd, None, x, y, w, h, 0x0004 | 0x0020 | 0x0040)
+    from .win32_windows import Win32Windows
+
+    Win32Windows().apply(hwnd, rect, "borderless" if borderless else "unchanged")
 
 
 def window_rect(hwnd):
-    from ctypes import wintypes
+    from .win32_windows import Win32Windows
 
-    rect = wintypes.RECT()
-    user_function("GetWindowRect", [ctypes.c_void_p, ctypes.POINTER(wintypes.RECT)])(hwnd, ctypes.byref(rect))
-    return [rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top]
+    return Win32Windows().rect(hwnd)
 
 
 def detect_installs():

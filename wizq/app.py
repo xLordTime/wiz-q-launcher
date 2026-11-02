@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import math
 import sqlite3
 import subprocess
 import sys
@@ -45,6 +44,7 @@ from .storage import ProfileError, Store, check_database, restore_backup
 from .themes import BUILTINS, catalog, stylesheet
 from .vault import Vault
 from .widgets import Button, Task, label, row
+from .windowing import WindowManager
 
 
 def password_dialog(parent, title, confirm=False, windows_option=False):
@@ -123,6 +123,7 @@ class Window(DesktopShell, QMainWindow):
     def __init__(self, paths, store, vault, safe_mode=False):
         super().__init__()
         self.paths, self.store, self.vault, self.safe_mode = paths, store, vault, safe_mode
+        self.window_manager = WindowManager(store)
         self.sessions = Sessions(store)
         self.tasks, self.launch_tasks = set(), set()
         self.pool, self.launch_pool = QThreadPool(self), QThreadPool(self)
@@ -273,6 +274,9 @@ class Window(DesktopShell, QMainWindow):
         return task
 
     def run_task(self, task, done=None, launch=False):
+        # Keep the signal QObject on the GUI thread and release its Python
+        # callback closures there once the QRunnable has finished.
+        task.signals.setParent(self)
         self.tasks.add(task)
         if launch:
             self.launch_tasks.add(task)
@@ -281,6 +285,7 @@ class Window(DesktopShell, QMainWindow):
         task.signals.error.connect(self.notice)
         task.signals.done.connect(lambda: self.tasks.discard(task))
         task.signals.done.connect(lambda: self.launch_tasks.discard(task))
+        task.signals.done.connect(task.signals.deleteLater)
         (self.launch_pool if launch else self.pool).start(task)
 
     def refresh_accounts(self):
@@ -390,13 +395,7 @@ class Window(DesktopShell, QMainWindow):
                 else "Leere Instanz gestartet."
             )
         )
-        positions = self.store.get("window_placements", {})
-        if result["account_id"] in positions:
-            self.guard(
-                lambda: backend.placement(
-                    result["hwnd"], positions[result["account_id"]], get(self.store, "borderless")
-                )
-            )
+        self.guard(lambda: self.window_manager.apply_saved(result))
         self.addons_page.emit_event("session.started", {"region": result["region"], "pid": result["pid"]})
         self.webhook("start", result["account_id"])
         self.poll()
@@ -509,35 +508,29 @@ class Window(DesktopShell, QMainWindow):
         )
 
     def arrange_windows(self):
-        def act():
-            if not self.found:
-                raise ValueError("Keine laufenden Instanzen gefunden.")
-            rect = QApplication.primaryScreen().availableGeometry()
-            n, mode = len(self.found), get(self.store, "window_layout")
-            columns = n if mode == "horizontal" else 1 if mode == "vertical" else math.ceil(math.sqrt(n))
-            rows = math.ceil(n / columns)
-            for i, instance in enumerate(self.found):
-                backend.placement(
-                    instance["hwnd"],
-                    [
-                        rect.x() + (i % columns) * rect.width() // columns,
-                        rect.y() + (i // columns) * rect.height() // rows,
-                        rect.width() // columns,
-                        rect.height() // rows,
-                    ],
-                    get(self.store, "borderless"),
-                )
+        self.open_window_editor()
 
-        self.guard(act)
+    def open_window_editor(self, account=None, instance=None):
+        from .window_dialog import WindowDialog
+
+        self.guard(lambda: WindowDialog(self, account=account, instance=instance).exec())
+
+    def window_entries(self):
+        result = []
+        for instance in self.found:
+            state = self.sessions.live.get((instance["pid"], instance["created"]), {})
+            result.append(
+                {
+                    "instance": instance,
+                    "account_id": state.get("account_id") or self.window_manager.account_for(instance),
+                }
+            )
+        return result
 
     def save_layout(self):
         def save():
-            positions = self.store.get("window_placements", {})
-            for state in self.sessions.live.values():
-                if state["account_id"]:
-                    positions[state["account_id"]] = backend.window_rect(state["hwnd"])
-            self.store.set("window_placements", positions)
-            self.notice("Fensterlayout für zugeordnete Accounts gespeichert.")
+            count = self.window_manager.save_accounts(self.window_entries())
+            self.notice(f"Fensterposition, Größe und Modus für {count} zugeordnete Accounts gespeichert.")
 
         self.guard(save)
 

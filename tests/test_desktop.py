@@ -174,6 +174,133 @@ def test_per_region_language_has_readable_settings_and_survives_navigation(deskt
     assert window.store.get("region_language_de") == "us"
 
 
+@pytest.fixture
+def window_editor(desktop):
+    from types import SimpleNamespace
+
+    from wizq.window_dialog import WindowDialog
+    from wizq.windowing import Monitor
+
+    window, app, _, _, ids = desktop
+    monitors = [
+        Monitor("primary", (0, 0, 1920, 1080), (0, 0, 1920, 1040), True),
+        Monitor("left", (-1280, 0, 1280, 1024), (-1280, 0, 1280, 984)),
+    ]
+    calls = []
+    window.found = [{"pid": 100 + i, "created": float(i), "hwnd": 200 + i} for i in range(3)]
+    api = SimpleNamespace(
+        monitors=lambda: monitors,
+        valid=lambda instance: instance in window.found,
+        snapshot=lambda hwnd: {"rect": [30, 40, 800, 600], "style": 0x16C80000, "topmost": False},
+        apply=lambda *args: calls.append(args),
+        restore=lambda *args: calls.append(args),
+    )
+    window.window_manager._api = api
+    for instance, account_id in zip(window.found, ids):
+        window.window_manager.bind(instance, account_id)
+    dialog = WindowDialog(window, monitors=monitors)
+    dialog.show()
+    app.processEvents()
+    yield dialog, window, app, calls
+    dialog.close()
+    dialog.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+
+
+def test_window_preview_drag_and_custom_size_do_not_change_live_windows(window_editor):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
+
+    dialog, window, app, calls = window_editor
+    assert len(dialog.plans) == 3
+    assert dialog.canvas.active == 0
+    dialog.monitor.setCurrentIndex(dialog.monitor.findData("all"))
+    before = list(dialog.plans[0]["rect"])
+    point = dialog.canvas.canvas_rect(before).center().toPoint()
+    QTest.mousePress(dialog.canvas, Qt.MouseButton.LeftButton, pos=point)
+    QTest.mouseMove(dialog.canvas, point + QPoint(15, 10))
+    QTest.mouseRelease(dialog.canvas, Qt.MouseButton.LeftButton, pos=point + QPoint(15, 10))
+    assert dialog.layout_choice.currentData() == "custom"
+    assert dialog.plans[0]["rect"] != before
+    dialog.width_value.setValue(960)
+    dialog.height_value.setValue(540)
+    dialog.custom_mode.setCurrentIndex(dialog.custom_mode.findData("borderless"))
+    assert dialog.plans[0]["rect"][2:] == [960, 540]
+    assert dialog.plans[0]["mode"] == "borderless"
+    assert not calls
+    dialog.save_defaults()
+    saved = window.store.get("window_placements")
+    assert saved[window.store.accounts()[0]["id"]]["rect"][2:] == [960, 540]
+    assert not calls
+
+
+def test_window_profiles_match_accounts_and_never_assign_missing_account_to_another_window(
+    window_editor, monkeypatch
+):
+    from PySide6.QtWidgets import QInputDialog
+
+    dialog, window, app, calls = window_editor
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args: ("Zwei Monitore", True))
+    dialog.monitor.setCurrentIndex(dialog.monitor.findData("all"))
+    expected = [p["rect"] for p in dialog.plans]
+    dialog.save_profile()
+    profile = window.store.get("window_profiles")["Zwei Monitore"]
+    assert [p["rect"] for p in profile["windows"]] == expected
+    assert "instance" not in str(profile) and "synthetic-user" not in str(profile)
+    missing_account = profile["windows"][0]["account_id"]
+    window.store.set("window_profiles", {"Zwei Monitore": profile})
+    first = dialog.windows.takeTopLevelItem(0)
+    del first
+    dialog.load_profile()
+    assert len(dialog.plans) == 2
+    assert all(p["entry"]["account_id"] != missing_account for p in dialog.plans)
+    assert [p["rect"] for p in dialog.plans] == expected[1:]
+    assert "1 aktuell nicht verfügbar" in dialog.status.text()
+    assert not calls
+
+
+def test_window_apply_runs_the_checked_batch_and_updates_saved_controls(window_editor):
+    from PySide6.QtTest import QTest
+
+    dialog, window, app, calls = window_editor
+    dialog.mode.setCurrentIndex(dialog.mode.findData("borderless"))
+    dialog.layout_choice.setCurrentIndex(dialog.layout_choice.findData("main-left"))
+    dialog.gap.setValue(16)
+    dialog.apply_button.click()
+    for _ in range(300):
+        app.processEvents()
+        if not dialog.busy:
+            break
+        QTest.qWait(10)
+    assert not dialog.busy
+    assert len(calls) == 3
+    assert all(call[2] == "borderless" for call in calls)
+    assert len(window.store.get("window_originals")) == 3
+    assert window.settings_page.controls["window_mode"].currentData() == "borderless"
+    assert window.settings_page.controls["window_layout"].currentData() == "main-left"
+    assert window.settings_page.controls["window_gap"].value() == 16
+    assert "3 Spielfenster angeordnet" in dialog.status.text()
+
+
+def test_account_window_template_can_be_edited_before_launch(desktop):
+    from wizq.window_dialog import WindowDialog
+
+    window, app, *_ = desktop
+    dialog = WindowDialog(window, account=window.store.accounts()[0])
+    try:
+        assert dialog.current_entry()["instance"] is None
+        assert not dialog.apply_button.isEnabled()
+        dialog.width_value.setValue(960)
+        dialog.height_value.setValue(540)
+        dialog.save_defaults()
+        assert len(window.store.get("window_placements")) == 1
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        app.processEvents()
+
+
 def test_desktop_presets_and_small_window_render(desktop):
     window, app, *_ = desktop
     assert len(catalog(window.paths.directory("themes"))) >= 23

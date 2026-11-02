@@ -1,13 +1,17 @@
-**Wiz Q Launcher 6.0.0-beta.4 – Spielsprache und Autologin**
+**Wiz Q Launcher 6.0.0-beta.5 – Fensterverwaltung**
 
-- Spielsprache und Loginserver sind unabhängig: zum Beispiel DE mit US-Englisch ohne `-A` oder DE mit Deutsch über `-A de`.
-- Unter **Einstellungen → Launcher & Regionen → [Region] · Spielsprache** lässt sich die Sprache für jedes vorhandene Serverprofil speichern. Die Auswahl über der Accountliste und im Quicklaunch-Dialog kann sie für einen einzelnen Start überschreiben. Das gilt für Accounts, leere Instanzen, Startprofile und Shortcuts.
-- Verfügbar: US-Englisch, Deutsch, Französisch, Italienisch, UK-Englisch, Polnisch, Spanisch und Griechisch. Die Spielinstallation muss die gewählten Sprachdateien enthalten. Bestehende Standardsprachen bleiben erhalten.
-- Die Deimos-Start-/Loginlogik wurde erneut mit dem aktuellen Upstream verglichen. Die Mustersuche prüft jetzt die tatsächlichen Instruktionen und relative Ziele, erlaubt abweichende Stackpositionen und grenzt das bisher sehr breite Fenstermuster ein. Mehrdeutige Treffer werden weiterhin nicht verwendet.
-- Der Login wartet auf die Clientinitialisierung; die Wartezeit ist für langsamere PCs einstellbar. Bereits gesendete Anmeldungen werden nicht wiederholt. Die Fenstereingabe wird auch bei Fehlern wieder freigegeben.
-- Statt der bisherigen allgemeinen Meldung gibt es feste Fehlercodes für fehlende/mehrdeutige Muster, Berechtigungen, Initialisierung, Zeitüberschreitung und Hilfsprozessfehler. Zugangsdaten und rohe Fehlermeldungen werden nicht ausgegeben.
-- Accountauswahl, Themes und vorhandene Profildaten bleiben erhalten.
+- Neuer nativer Fensterdialog mit Monitorvorschau: Clients auswählen, sortieren, ziehen und skalieren. Erst **Anwenden** bewegt echte Fenster.
+- Mehr Layouts: automatisches/eigenes Raster, 2×2, nebeneinander, untereinander, Hauptfenster links/rechts/oben, Kaskade und Monitor füllen. Monitorwahl, Verteilung über mehrere Monitore, Taskleistenbereich, Abstände, Ränder und Proportionen sind einstellbar.
+- Eigene Positionen und Größen einschließlich negativer Bildschirmkoordinaten. Außenmaße und tatsächlicher Windows-Spielbereich sind getrennt; Größen-Presets bis 4K/Ultrawide, Zentrieren und rahmenloses Füllen.
+- Vorhandenen Rahmen beibehalten, skalierbarer Rahmen oder rahmenlos. Optional immer im Vordergrund. Per Rechtsklick auf laufende Instanzen zusätzlich minimieren, maximieren, wiederherstellen und Rahmen wechseln.
+- Benannte Fensterprofile und Account-Startvorgaben, die auch vor dem Spielstart bearbeitet werden können. Alte Positionen und Einstellungen bleiben lesbar. Nach einem Monitorwechsel werden unzugängliche Startpositionen zurückgeholt.
+- Freigabe abgeschlossener Hintergrundaufträge korrigiert, um Abstürze beim Beenden zu vermeiden.
+- Dauerhaft gesicherter Originalzustand und letzte Änderung zum Wiederherstellen. Prozessstartzeit sowie HWND/PID-Zuordnung schützen vor Zugriffen auf wiederverwendete Fenster. Fehlgeschlagene Anordnungen versuchen, vorherige Änderungen zurückzunehmen.
 
-**Update:** Im vorhandenen 6.0-Launcher unter **Einstellungen → Updates** den Kanal **beta** wählen, **Nach Updates suchen → Herunterladen → Neustarten & anwenden**. Alternativ `WizQLauncher-v6.0.0-beta.4.exe` herunterladen, den alten Launcher über **Beenden** schließen und die neue EXE starten. Python/Rust sind nicht separat nötig.
+**Öffnen:** Launch → Laufende Instanzen → **Anordnen …** oder Extras → **Spielfenster anordnen**. Über **Fenster …** bei einem Account lässt sich seine Startvorgabe bearbeiten.
 
-Der Windows-Workflow prüft Python/Qt, native Muster mit synthetischen Daten, EXE-Build und den echten EXE-Austausch mit Datenerhalt vor der Veröffentlichung. Eine echte Anmeldung an den aktuellen DE-/US-Spielclients ist hier nicht möglich; die neue Diagnose zeigt bei verbleibenden Problemen den konkreten Fehlercode. Diese Version bleibt ein Prerelease. Clips/Aufnahmen benötigen einen vorhandenen FFmpeg-Encoder.
+**Update:** Einstellungen → Updates → Kanal **beta** → Nach Updates suchen → Herunterladen → Neustarten & anwenden. Alternativ `WizQLauncher-v6.0.0-beta.5.exe` herunterladen und nach dem Beenden der alten Version starten. Das vorhandene lokale Profil wird weiterverwendet.
+
+**Spielgrafik:** Die neuen Maße betreffen Windows-Fenster und Spielbereich. Interne Renderauflösung und Kamera-Aspekt-Hooks aus Deimos sind nicht enthalten; bei gestrecktem Bild oder versetzten Klicks eine passende Auflösung im Spiel wählen und den Fenstermodus verwenden. Rahmenlose Fenster werden über den Launcher-Editor skaliert.
+
+Die Veröffentlichung erfolgt nach Python-/Qt-Tests, nativen Muster-Tests, realen Windows-Fensterprüfungen, EXE-Build und Start-/Updateprüfung mit Datenerhalt. DE-/US-Spielclients und gemischte Monitor-Skalierungen benötigen weiterhin Praxistests. Diese Version ist ein Prerelease.

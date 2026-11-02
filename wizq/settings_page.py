@@ -4,7 +4,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QSignalBlocker, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -54,6 +54,9 @@ class SettingsPage(QWidget):
         self.body.setSpacing(12)
         self.rows, self.controls = [], {}
         for spec in SETTINGS:
+            if spec.key == "borderless":
+                # Read/import the legacy flag, but expose only the new mode selector.
+                continue
             card = QFrame()
             card.setObjectName("settingRow")
             content = QFormLayout(card)
@@ -76,6 +79,10 @@ class SettingsPage(QWidget):
                 control = Combo()
                 for choice in spec.choices:
                     title = GAME_LANGUAGES[choice] if spec.key.startswith("region_language_") else str(choice)
+                    if spec.key in ("window_layout", "window_mode"):
+                        from .windowing import LAYOUTS, MODES
+
+                        title = (LAYOUTS if spec.key == "window_layout" else MODES)[choice]
                     control.addItem(title, choice)
                 control.setCurrentIndex(max(0, control.findData(value)))
                 control.currentIndexChanged.connect(
@@ -109,6 +116,10 @@ class SettingsPage(QWidget):
             self.body.addWidget(card)
             self.rows.append((spec.section, spec.title + " " + spec.help + " " + spec.key, card))
         self.extra("Launcher & Regionen", self.install_actions())
+        window_card, window_layout = panel()
+        window_layout.addWidget(label("Spielfenster", name="metric"))
+        window_layout.addWidget(Button("Fenster anordnen und bearbeiten …", window.arrange_windows))
+        self.extra("Fenster & Shortcuts", window_card)
         self.extra("Sicherheit", self.security_actions())
         self.extra("Speicher & Sicherungen", self.backup_actions())
         self.extra("Discord", self.discord_actions())
@@ -142,6 +153,16 @@ class SettingsPage(QWidget):
             self.window.notice("Gespeichert", transient=True)
         except Exception as exc:
             self.window.notice("Nicht gespeichert: " + str(exc))
+
+    def refresh_window_settings(self):
+        for key in ("window_layout", "window_mode", "window_gap", "window_margin"):
+            control = self.controls[key]
+            value = get(self.window.store, key)
+            with QSignalBlocker(control):
+                if isinstance(control, QSpinBox):
+                    control.setValue(value)
+                else:
+                    control.setCurrentIndex(max(0, control.findData(value)))
 
     def pick_path(self, key, control):
         path = (
