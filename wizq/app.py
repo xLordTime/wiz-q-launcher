@@ -390,7 +390,7 @@ class Window(DesktopShell, QMainWindow):
         self.notice(
             result["warning"]
             or (
-                "Client gestartet · Anmeldebefehl gesendet, Serveranmeldung bitte prüfen."
+                "Client gestartet · Anmeldedaten eingegeben. Serveranmeldung im Spiel prüfen."
                 if result["account_id"]
                 else "Leere Instanz gestartet."
             )

@@ -26,7 +26,7 @@ First start:
 - AES-GCM vault, per-user DPAPI or scrypt-wrapped master key; no fixed password fallback.
 - Read-only import of the 5.5.1 encrypted formats and historical playtime totals.
 - PID + creation time session identity, heartbeat checkpoints and no offline credit after crashes.
-- Deimos-derived native start/login adapter, without a required wizwalker installation.
+- Native game launch and automatic sign-in through the game window, without a required wizwalker installation.
 - Multi-monitor window editor with drag/resize preview, layouts, borderless/custom client sizes, saved account templates and durable undo.
 - Independent server and game language for every launch; per-region defaults, one-off overrides and credential-free login diagnostics.
 - Discord RPC/yield-to-game and optional encrypted webhook.

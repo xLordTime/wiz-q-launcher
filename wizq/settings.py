@@ -133,7 +133,7 @@ SETTINGS = [
         "Launcher & Regionen",
         "Autologin: Initialisierung abwarten (Sekunden)",
         15,
-        "Nach Erscheinen des Fensters wartet der Adapter auf den initialisierten Spielclient. Auf älteren PCs bei Bedarf erhöhen. Ein bereits gesendeter Login wird nicht wiederholt.",
+        "Wartezeit ab Erscheinen des Spielfensters, bevor die Zugangsdaten eingegeben werden. Erhöhen, falls der Anmeldebildschirm später erscheint.",
         low=2,
         high=60,
     ),

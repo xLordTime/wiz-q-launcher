@@ -19,41 +19,11 @@ PROCESS_NAME = "wizardgraphicalclient.exe"
 # can contain arbitrary text and are never displayed, persisted or forwarded.
 LOGIN_ERRORS = {
     "identity": "Der gestartete Client ist nicht mehr verfügbar oder sein Fenster gehört nicht mehr zu diesem Prozess.",
-    "backend": "Das native Deimos-Backend fehlt oder konnte nicht geladen werden.",
-    "permission": "Windows verweigert den Zugriff auf den Spielclient. Spiel und Launcher mit denselben Berechtigungen starten.",
-    "module": "Das Spielmodul wurde noch nicht vollständig geladen. Die Initialisierungswartezeit in den Einstellungen erhöhen.",
-    "login_missing": "Das Loginmuster passt nicht zum installierten Spielclient. Launcher und Spielclient aktualisieren.",
-    "login_ambiguous": "Das Loginmuster ist mehrdeutig. Es wurde kein Anmeldebefehl gesendet.",
-    "hook_missing": "Das Fenstermuster passt nicht zum installierten Spielclient. Launcher und Spielclient aktualisieren.",
-    "hook_ambiguous": "Das Fenstermuster ist mehrdeutig. Es wurde kein Anmeldebefehl gesendet.",
-    "initializing": "Der Spielclient war innerhalb der Wartezeit noch nicht bereit. Die Initialisierungswartezeit erhöhen.",
-    "memory": "Der Spielspeicher konnte nicht gelesen oder beschrieben werden. Spielclient und Berechtigungen prüfen.",
-    "hook_timeout": "Der Spielclient hat den Anmeldebefehl nicht rechtzeitig verarbeitet. Die Anmeldung wird nicht automatisch wiederholt.",
+    "input_failed": "Die Eingabe im Anmeldefenster wurde unterbrochen. Prüfe die Initialisierungswartezeit und ob Spiel und Launcher mit denselben Windows-Berechtigungen laufen.",
+    "credentials": "Die Zugangsdaten enthalten ein Steuerzeichen, das sich nicht als Text eingeben lässt.",
     "worker_timeout": "Der Autologin-Hilfsprozess hat sein Zeitlimit überschritten.",
-    "worker_crash": "Der native Autologin-Hilfsprozess wurde unerwartet beendet.",
-    "unsupported": "Der installierte Client wird vom Autologin-Adapter aktuell nicht unterstützt.",
+    "worker_crash": "Der Autologin-Hilfsprozess wurde unerwartet beendet.",
 }
-RETRYABLE_LOGIN_ERRORS = {"module", "login_missing", "hook_missing", "initializing"}
-
-
-def login_error_code(error):
-    text = str(error)
-    for marker, code in (
-        ("LOGIN_PATTERN ambiguous", "login_ambiguous"),
-        ("LOGIN_PATTERN not found", "login_missing"),
-        ("HOOK_PATTERN ambiguous", "hook_ambiguous"),
-        ("HOOK_PATTERN not found", "hook_missing"),
-        ("CLIENT_NOT_READY", "initializing"),
-        ("OpenProcess:", "permission"),
-        ("CreateToolhelp32Snapshot:", "module"),
-        ("Module 'WizardGraphicalClient.exe' not found", "module"),
-        ("Timed out waiting for login bytecode", "hook_timeout"),
-        ("ReadProcessMemory", "memory"),
-        ("WriteProcessMemory", "memory"),
-    ):
-        if marker in text:
-            return code
-    return "unsupported"
 
 
 def launch_arguments(server, port, language):
@@ -183,10 +153,6 @@ def launch(store, vault, region, account=None, language=None):
         )
     server, port = get(store, "region_server_" + region), get(store, "region_port_" + region)
     native = native_module()
-    if account and native is None:
-        raise RuntimeError(
-            "Das native Deimos-Backend fehlt. Windows-Build verwenden oder ohne Autologin starten."
-        )
     if native:
         pid = native.launch(str(path), f"{server}:{port}", language)
     else:
@@ -244,6 +210,8 @@ def launch(store, vault, region, account=None, language=None):
                 warning = f"Autologin [{code}]: {LOGIN_ERRORS[code]} Das Fenster bleibt für die manuelle Anmeldung offen."
         except subprocess.TimeoutExpired:
             warning = f"Autologin [worker_timeout]: {LOGIN_ERRORS['worker_timeout']} Das Fenster bleibt offen; Anmeldung prüfen."
+        except OSError:
+            warning = f"Autologin [worker_crash]: {LOGIN_ERRORS['worker_crash']} Das Fenster bleibt für die manuelle Anmeldung offen."
         finally:
             del credentials, payload
             # The worker's finally cannot run if Windows terminates it or the
@@ -267,7 +235,7 @@ def launch(store, vault, region, account=None, language=None):
 
 
 def login_worker():
-    """Process isolation for a native backend fault, not a security sandbox."""
+    """Enter credentials into the verified login window without changing focus."""
     hwnd, pid, created = None, None, None
     disabled = False
 
@@ -283,29 +251,41 @@ def login_worker():
         hwnd, pid, created = int(payload["hwnd"]), int(payload["pid"]), float(payload["created"])
         if not valid():
             return fail("identity", 2)
-        native = native_module()
-        if native is None:
-            return fail("backend", 3)
+        username, password = payload["username"], payload["password"]
+        if any(ord(char) < 32 or ord(char) == 127 for field in (username, password) for char in field):
+            return fail("credentials")
         ready_timeout = max(2, min(60, int(payload.get("ready_timeout", 15))))
-        deadline = time.monotonic() + ready_timeout
-        # Match Deimos: prevent input during dispatch and let the window initialize.
+        time.sleep(ready_timeout)
+        if not valid():
+            return fail("identity", 2)
+
+        send_message = user_function(
+            "SendMessageTimeoutW",
+            [ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t,
+             ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_size_t)],
+            ctypes.c_ssize_t,
+        )
+        # Match the v5 login screen sequence. WM_CHAR carries UTF-16 code units.
+        keys = (username + "\t" + password + "\r").encode("utf-16-le")
+        result = ctypes.c_size_t()
         user_function("EnableWindow", [ctypes.c_void_p, ctypes.c_int])(hwnd, 0)
         disabled = True
-        time.sleep(2)
-        while valid():
-            try:
-                native.login(hwnd, payload["username"], payload["password"])
-                return 0
-            except Exception as exc:
-                code = login_error_code(exc)
-                # These failures occur before allocations or any dispatch. Never
-                # retry a timeout, write failure, ambiguous pattern or sent login.
-                if code not in RETRYABLE_LOGIN_ERRORS or time.monotonic() >= deadline:
-                    return fail(code)
-                time.sleep(0.5)
-        return fail("identity", 2)
+        get_window_pid = user_function(
+            "GetWindowThreadProcessId",
+            [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)],
+            ctypes.c_uint32,
+        )
+        owner = ctypes.c_uint32()
+        for offset in range(0, len(keys), 2):
+            if not get_window_pid(hwnd, ctypes.byref(owner)) or owner.value != pid or not alive(pid, created):
+                return fail("identity", 2)
+            key = int.from_bytes(keys[offset:offset + 2], "little")
+            # WM_CHAR, SMTO_BLOCK | SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT.
+            if not send_message(hwnd, 0x0102, key, 1, 0x23, 1000, ctypes.byref(result)):
+                return fail("input_failed")
+        return 0
     except Exception:
-        return fail("unsupported")
+        return fail("worker_crash")
     finally:
         if disabled:
             try:
