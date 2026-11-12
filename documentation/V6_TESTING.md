@@ -45,7 +45,7 @@ Das Profil liegt unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert
 8. Die drei Desktop-Stile durchschalten, die Fensteraufteilung ändern, beenden und erneut starten. Daten, Theme und Aufteilung müssen erhalten bleiben.
 9. F1 öffnen und nach einer Einstellung suchen. Sicherung über Datei → Profil sichern oder Strg+S erstellen.
 
-Die automatischen Tests prüfen Datenhaltung, Navigation und den gepackten Windows-Start einschließlich EXE-Austausch. Eine erfolgreiche Anmeldung an den aktuell installierten DE-/US-Spielclients kann nur mit diesen Clients geprüft werden. Nach Spielupdates können sich Loginmuster ändern.
+Die automatischen Tests prüfen Datenhaltung, Navigation und den gepackten Windows-Start einschließlich EXE-Austausch. Eine erfolgreiche Anmeldung an den aktuell installierten DE-/US-Spielclients kann nur mit diesen Clients geprüft werden.
 
 ## Fensterverwaltung in Beta 5
 
@@ -77,6 +77,6 @@ Clips/Aufnahmen benötigen weiterhin einen vorhandenen FFmpeg-Encoder. Aufnahme 
 
 ## Wenn Autologin fehlschlägt
 
-Die Meldung enthält einen festen Fehlercode, aber keine Zugangsdaten. `permission` bedeutet fehlenden Prozesszugriff: Spiel und Launcher mit denselben Windows-Berechtigungen starten. `initializing`/`module` kann auf langsamen PCs eine längere **Autologin: Initialisierung abwarten**-Zeit benötigen. `login_missing` oder `hook_missing` nach Ablauf der Wartezeit deutet auf ein inkompatibles Clientmuster hin. Mehrdeutige Treffer werden als `login_ambiguous`/`hook_ambiguous` getrennt gemeldet und führen zu keinem Login. `hook_timeout` wird nicht automatisch wiederholt, damit derselbe Login nicht mehrfach gesendet wird.
+Der Launcher wartet nach dem Öffnen des Fensters die unter **Autologin: Initialisierung abwarten** eingestellte Zeit und gibt die Zugangsdaten im Fenster der gestarteten Instanz ein. Falls der Anmeldebildschirm später erscheint, die Wartezeit erhöhen. Bei `input_failed` auch prüfen, ob Spiel und Launcher mit denselben Windows-Berechtigungen laufen. Nach einer unterbrochenen Eingabe die Felder im offenen Spielfenster prüfen und die Anmeldung dort abschließen. Der Launcher wiederholt die Eingabe nicht. Diagnosemeldungen enthalten feste Fehlercodes und keine Zugangsdaten.
 
 Bei einem Fehler bleiben die manuellen Eingaben im Client verfügbar. Zum Eingrenzen reichen Fehlercode, Serverregion und Spielsprache; Zugangsdaten gehören nicht in einen Fehlerbericht.
