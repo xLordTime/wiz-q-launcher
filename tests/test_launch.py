@@ -86,16 +86,12 @@ def test_account_autologin_uses_profile_language_and_reports_sanitized_failure(
     store, vault, _ = launch_environment
     ident = store.save_account(vault, "Synthetic", "secret-user", "secret-password", "de")
     store.set("region_language_de", "us")
-    launched, inputs, enabled = [], [], []
+    launched, inputs = [], []
     module = SimpleNamespace(launch=lambda *args: launched.append(args) or 42) if native else None
     monkeypatch.setattr(backend, "native_module", lambda: module)
     monkeypatch.setattr(
         backend.subprocess, "Popen", lambda args, **kwargs: launched.append(args) or SimpleNamespace(pid=42)
     )
-    monkeypatch.setattr(
-        backend, "user_function", lambda *args: lambda hwnd, flag: enabled.append((hwnd, flag))
-    )
-
     def run(command, **kwargs):
         assert "secret-user" not in " ".join(command) and "secret-password" not in " ".join(command)
         inputs.append(json.loads(kwargs["input"]))
@@ -110,12 +106,11 @@ def test_account_autologin_uses_profile_language_and_reports_sanitized_failure(
     assert inputs[0]["hwnd"] == 123 and inputs[0]["ready_timeout"] == 15
     assert result["account_id"] == ident
     assert "[input_failed]" in result["warning"] and "secret-password" not in result["warning"]
-    assert enabled == [(123, 1)]
 
 
 @pytest.fixture
 def worker(monkeypatch):
-    clock, enabled, calls, owner = [0.0], [], [], [42]
+    clock, calls, owner = [0.0], [], [42]
     payload = {
         "pid": 42,
         "hwnd": 123,
@@ -130,9 +125,9 @@ def worker(monkeypatch):
     monkeypatch.setattr(backend, "window_handles", lambda: [(123, 42)])
     monkeypatch.setattr(backend.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay))
 
-    def send(hwnd, message, key, _lparam, _flags, timeout, _result):
-        assert hwnd == 123 and message == 0x0102 and timeout == 1000
-        calls.append(key)
+    def send(hwnd, message, key, lparam, _flags, timeout, _result):
+        assert hwnd == 123 and timeout == 1000
+        calls.append((message, key, lparam, clock[0]))
         return 1
 
     def get_pid(hwnd, out):
@@ -143,39 +138,53 @@ def worker(monkeypatch):
     functions = {
         "SendMessageTimeoutW": send,
         "GetWindowThreadProcessId": get_pid,
-        "EnableWindow": lambda hwnd, flag: enabled.append((hwnd, flag)),
+        "IsWindowEnabled": lambda hwnd: hwnd == 123,
+        "MapVirtualKeyW": lambda key, mode: {0x09: 0x0F, 0x0D: 0x1C}[key],
     }
     monkeypatch.setattr(backend, "user_function", lambda name, *args: functions[name])
-    return clock, enabled, calls, owner, functions
+    return calls, owner, functions
 
 
-def test_worker_types_unicode_into_the_new_client_after_startup(worker, capsys):
-    clock, enabled, calls, _, _ = worker
+def test_worker_separates_credentials_when_the_client_only_handles_tab_as_a_key(worker, capsys):
+    calls, _, _ = worker
     assert backend.login_worker() == 0
-    assert clock[0] == 15
-    assert b"".join(key.to_bytes(2, "little") for key in calls).decode("utf-16-le") == (
-        "zauberä🧙\tsecret-password\r"
-    )
-    assert enabled == [(123, 0), (123, 1)]
+    fields = [bytearray(), bytearray()]
+    active_field = 0
+    submitted = []
+    for message, key, details, at in calls:
+        if message == 0x0102:
+            assert at == (15 if active_field == 0 else 15.25)
+            fields[active_field].extend(key.to_bytes(2, "little"))
+        elif message == 0x0100 and key == 0x09:
+            active_field = 1
+        elif message == 0x0100 and key == 0x0D:
+            submitted.append(tuple(field.decode("utf-16-le") for field in fields))
+    assert submitted == [("zauberä🧙", "secret-password")]
+    assert [event[:3] for event in calls if event[0] != 0x0102] == [
+        (0x0100, 0x09, 0x000F0001),
+        (0x0101, 0x09, 0xC00F0001),
+        (0x0100, 0x0D, 0x001C0001),
+        (0x0101, 0x0D, 0xC01C0001),
+    ]
     assert not capsys.readouterr().out
 
 
-def test_worker_stops_on_failed_input_without_resending_or_submitting(worker, capsys):
-    _, enabled, calls, _, functions = worker
+def test_worker_stops_if_tab_delivery_fails_before_typing_password(worker, capsys):
+    calls, _, functions = worker
 
-    def fail_second_message(_hwnd, _message, key, *_):
-        calls.append(key)
-        return len(calls) < 2
+    def fail_tab(_hwnd, message, key, *_):
+        calls.append((message, key))
+        return message == 0x0102
 
-    functions["SendMessageTimeoutW"] = fail_second_message
+    functions["SendMessageTimeoutW"] = fail_tab
     assert backend.login_worker() == 4
-    assert calls == [ord("z"), ord("a")]
-    assert enabled == [(123, 0), (123, 1)]
+    assert calls[-1] == (0x0100, 0x09)
+    assert b"".join(key.to_bytes(2, "little") for message, key in calls[:-1]).decode("utf-16-le") == "zauberä🧙"
     assert json.loads(capsys.readouterr().out) == {"code": "input_failed"}
 
 
 def test_worker_stops_if_window_changes_owner_during_input(worker, capsys):
-    _, _, calls, owner, functions = worker
+    calls, owner, functions = worker
 
     def change_owner(_hwnd, _message, key, *_):
         calls.append(key)
@@ -189,8 +198,8 @@ def test_worker_stops_if_window_changes_owner_during_input(worker, capsys):
 
 
 def test_worker_rejects_foreign_window_before_touching_client(worker, monkeypatch, capsys):
-    _, enabled, calls, _, _ = worker
+    calls, _, _ = worker
     monkeypatch.setattr(backend, "window_handles", lambda: [(123, 999)])
     assert backend.login_worker() == 2
-    assert not enabled and not calls
+    assert not calls
     assert json.loads(capsys.readouterr().out) == {"code": "identity"}

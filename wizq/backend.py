@@ -214,13 +214,6 @@ def launch(store, vault, region, account=None, language=None):
             warning = f"Autologin [worker_crash]: {LOGIN_ERRORS['worker_crash']} Das Fenster bleibt für die manuelle Anmeldung offen."
         finally:
             del credentials, payload
-            # The worker's finally cannot run if Windows terminates it or the
-            # parent kills it after a timeout. Always restore the exact window.
-            try:
-                if alive(pid, created) and (hwnd, pid) in window_handles():
-                    user_function("EnableWindow", [ctypes.c_void_p, ctypes.c_int])(hwnd, 1)
-            except OSError:
-                pass
         if get(store, "set_window_title"):
             set_title(hwnd, account["nickname"])
     return {
@@ -235,9 +228,8 @@ def launch(store, vault, region, account=None, language=None):
 
 
 def login_worker():
-    """Enter credentials into the verified login window without changing focus."""
+    """Enter credentials into the verified login window without stealing focus."""
     hwnd, pid, created = None, None, None
-    disabled = False
 
     def fail(code, result=4):
         print(json.dumps({"code": code}), flush=True)
@@ -265,31 +257,38 @@ def login_worker():
              ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_size_t)],
             ctypes.c_ssize_t,
         )
-        # Match the v5 login screen sequence. WM_CHAR carries UTF-16 code units.
-        keys = (username + "\t" + password + "\r").encode("utf-16-le")
-        result = ctypes.c_size_t()
-        user_function("EnableWindow", [ctypes.c_void_p, ctypes.c_int])(hwnd, 0)
-        disabled = True
         get_window_pid = user_function(
             "GetWindowThreadProcessId",
             [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)],
             ctypes.c_uint32,
         )
+        window_enabled = user_function("IsWindowEnabled", [ctypes.c_void_p])
+        scan_code = user_function("MapVirtualKeyW", [ctypes.c_uint, ctypes.c_uint], ctypes.c_uint)
         owner = ctypes.c_uint32()
-        for offset in range(0, len(keys), 2):
-            if not get_window_pid(hwnd, ctypes.byref(owner)) or owner.value != pid or not alive(pid, created):
-                return fail("identity", 2)
-            key = int.from_bytes(keys[offset:offset + 2], "little")
-            # WM_CHAR, SMTO_BLOCK | SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT.
-            if not send_message(hwnd, 0x0102, key, 1, 0x23, 1000, ctypes.byref(result)):
-                return fail("input_failed")
+        result = ctypes.c_size_t()
+        fields = ((username.encode("utf-16-le"), 0x09), (password.encode("utf-16-le"), 0x0D))
+        for text, virtual_key in fields:
+            # The client accepts WM_CHAR for text but handles Tab and Enter as keys.
+            events = [
+                (0x0102, int.from_bytes(text[offset:offset + 2], "little"), 1)
+                for offset in range(0, len(text), 2)
+            ]
+            key_details = 1 | (scan_code(virtual_key, 0) << 16)
+            events.extend((
+                (0x0100, virtual_key, key_details),  # WM_KEYDOWN
+                (0x0101, virtual_key, key_details | 0xC0000000),  # WM_KEYUP
+            ))
+            for message, key, details in events:
+                if not get_window_pid(hwnd, ctypes.byref(owner)) or owner.value != pid or not alive(pid, created):
+                    return fail("identity", 2)
+                # SMTO_BLOCK | SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT.
+                if not window_enabled(hwnd) or not send_message(
+                    hwnd, message, key, details, 0x23, 1000, ctypes.byref(result)
+                ):
+                    return fail("input_failed")
+            if virtual_key == 0x09:
+                # Allow the client to process the field change before typing the password.
+                time.sleep(0.25)
         return 0
     except Exception:
         return fail("worker_crash")
-    finally:
-        if disabled:
-            try:
-                if valid():
-                    user_function("EnableWindow", [ctypes.c_void_p, ctypes.c_int])(hwnd, 1)
-            except Exception:
-                pass
