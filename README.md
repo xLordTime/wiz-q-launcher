@@ -1,12 +1,12 @@
 # Wiz Q Launcher 6
-**Complete PySide6 rebuild — development beta on `Version-6.0`.**
+**Version 6.0.0 for Windows, rebuilt with PySide6.**
 
-A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 3 desktop presets plus 20 themes, optional addons, Discord and a crash-resistant profile. This branch is not a stable replacement until real Windows/US/DE client tests have been completed.
+A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 3 desktop presets plus 20 themes, optional addons, Discord and a crash-resistant profile.
 
 ![PySide6 preview with synthetic example accounts](documentation/images/v6-aero-explorer.png)
 
 ## Start
-Windows users use the complete EXE from a successful **Version 6 Windows Build** artifact. Python and Rust are not required to run the EXE. Beta releases are available under Releases after the Windows checks pass; stable releases remain drafts.
+Download the Windows EXE from [Releases](https://github.com/xLordTime/wiz-q-launcher/releases/latest). Python and Rust are not required to run it. For updates in the launcher, choose the stable channel under Settings → Updates.
 
 The first 5.x → 6.0 transition may download a new EXE and require starting it once. Subsequent 6.x updates use the new verified-download/relay flow. The profile remains in **%LOCALAPPDATA%/WizQLauncher**.
 
@@ -62,7 +62,7 @@ Ctrl+1…6 changes page, Ctrl+L locks the vault, F1 opens Help, Ctrl+Q exits.
 Windows global hotkeys: Ctrl+Alt+L starts the selected accounts, Ctrl+Alt+C saves a replay clip. Occupied combinations are not taken from another app.
 
 ## Documentation
-- [Desktop beta test guide (Deutsch)](documentation/V6_TESTING.md)
+- [Windows testing guide (Deutsch)](documentation/V6_TESTING.md)
 - [Beta status, tests and limits](documentation/V6_BETA.md)
 - [Full rebuild specification](documentation/VERSION_6_PLAN.md)
 - [Create addons](documentation/ADDON_SDK.md)

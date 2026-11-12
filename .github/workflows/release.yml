@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   release:
-    # Explicit release commits can publish a tested beta without a manual binary upload.
+    # Release commits and tags use the same Windows verification pipeline.
     if: "${{ startsWith(github.ref, 'refs/tags/v6') || startsWith(github.event.head_commit.message, 'release: ') }}"
     runs-on: windows-latest
     env:
@@ -22,9 +22,11 @@ jobs:
         run: |
           python -m pip install -r requirements-dev.txt
           python -m pip install ./native
-      - name: Check tag matches application version
+      - name: Resolve version and publication mode
         id: version
         shell: pwsh
+        env:
+          RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           $appVersion = python -c "from wizq import __version__; print(__version__)"
           $expectedTag = "v$appVersion"
@@ -32,9 +34,12 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne $expectedTag) {
             throw "Tag does not match application version."
           }
-          if ($env:GITHUB_REF_TYPE -ne "tag" -and $preRelease -ne "true") {
-            throw "Branch releases are restricted to prereleases."
+          $headTitle = ($env:RELEASE_COMMIT_MESSAGE -split "\r?\n", 2)[0]
+          $publishStable = $preRelease -eq "false" -and $headTitle -ceq "release: publish $expectedTag"
+          if ($env:GITHUB_REF_TYPE -ne "tag" -and $preRelease -ne "true" -and -not $publishStable) {
+            throw "A stable branch release requires the exact commit title: release: publish $expectedTag"
           }
+          "publish_stable=$($publishStable.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "tag=$expectedTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "prerelease=$preRelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Validate
@@ -63,9 +68,9 @@ jobs:
           name: Wiz Q Launcher ${{ steps.version.outputs.tag }}
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          draft: ${{ steps.version.outputs.prerelease != 'true' }}
+          draft: ${{ steps.version.outputs.prerelease != 'true' && steps.version.outputs.publish_stable != 'true' }}
           prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
-          make_latest: false
+          make_latest: ${{ steps.version.outputs.publish_stable == 'true' }}
           overwrite_files: false
           body_path: documentation/V6_RELEASE_NOTES.md
           files: release/*

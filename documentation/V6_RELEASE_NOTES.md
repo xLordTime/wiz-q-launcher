@@ -1,11 +1,10 @@
-**Wiz Q Launcher 6.0.0-beta.7 – Auto-Login**
+**Wiz Q Launcher 6.0.0**
 
-- Der Launcher gibt die Anmeldedaten im Fenster der gerade gestarteten Wizard101-Instanz ein. Der Feldwechsel erfolgt per Tab-Tastendruck, das Abschicken per Enter.
-- Nach Tab wartet der Launcher kurz, bevor er das Passwort eingibt. Bei einem Übertragungsfehler bleibt das Fenster für die manuelle Anmeldung offen.
-- Die Benutzereinstellungen und gespeicherten Accounts werden aus dem vorhandenen lokalen Profil geladen.
+- Die neu gestaltete Windows-Oberfläche bietet Accountgruppen, Startprofile, Themes und eine Übersicht der laufenden Spielinstanzen.
+- Auto-Login gibt Benutzername und Passwort in getrennte Felder der neu gestarteten Wizard101-Instanz ein. Der Launcher wechselt per Tab ins Passwortfeld und bestätigt per Enter. Bei einem Übertragungsfehler bleibt die manuelle Anmeldung möglich.
+- Der Fenstereditor bietet Monitorwahl, Ziehen und Skalieren, Rahmenlosmodus und speicherbare Layouts.
+- Gespeicherte Accounts und Einstellungen werden aus dem bestehenden lokalen Profil übernommen. Für den Umstieg von 5.x steht der Profilimport zur Verfügung.
 
-**Update in der App:** Einstellungen → Updates → Updatekanal **beta** → Nach Updates suchen → Herunterladen → Neustarten & anwenden. Die App prüft die Dateigröße und die SHA-256-Prüfsumme vor dem Austausch.
+**Update:** Im Launcher unter **Einstellungen → Updates** den Kanal **stable** wählen und **Nach Updates suchen**. Wer bereits den Kanal **beta** nutzt, erhält ebenfalls 6.0.0. Danach **Herunterladen → Neustarten & anwenden**.
 
-**Manueller Download:** Die EXE und die zugehörige Prüfsumme stehen unter Assets. Die EXE ist nicht mit einem Herausgeberzertifikat signiert.
-
-Dies ist eine Vorabversion. Die Windows-Tests und der Start der gepackten EXE werden im Release-Workflow geprüft. Die Anmeldung im echten DE- und US-Client benötigt einen Praxistest.
+Die Windows-EXE und ihre SHA-256-Prüfsumme stehen unter Assets. Die EXE hat keine digitale Herausgebersignatur.
