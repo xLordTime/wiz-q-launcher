@@ -1,18 +1,11 @@
-**Wiz Q Launcher 6.0.0-beta.6 – Fensterverwaltung**
+**Wiz Q Launcher 6.0.0-beta.7 – Auto-Login**
 
-- Minimierte Clients behalten beim Speichern und Bearbeiten eines Layouts ihre normale Fensterposition und Größe, einschließlich der Taskleisten-Koordinatenumrechnung.
-- Neuer nativer Fensterdialog mit Monitorvorschau: Clients auswählen, sortieren, ziehen und skalieren. Erst **Anwenden** bewegt echte Fenster.
-- Mehr Layouts: automatisches/eigenes Raster, 2×2, nebeneinander, untereinander, Hauptfenster links/rechts/oben, Kaskade und Monitor füllen. Monitorwahl, Verteilung über mehrere Monitore, Taskleistenbereich, Abstände, Ränder und Proportionen sind einstellbar.
-- Eigene Positionen und Größen einschließlich negativer Bildschirmkoordinaten. Außenmaße und tatsächlicher Windows-Spielbereich sind getrennt; Größen-Presets bis 4K/Ultrawide, Zentrieren und rahmenloses Füllen.
-- Vorhandenen Rahmen beibehalten, skalierbarer Rahmen oder rahmenlos. Optional immer im Vordergrund. Per Rechtsklick auf laufende Instanzen zusätzlich minimieren, maximieren, wiederherstellen und Rahmen wechseln.
-- Benannte Fensterprofile und Account-Startvorgaben, die auch vor dem Spielstart bearbeitet werden können. Alte Positionen und Einstellungen bleiben lesbar. Nach einem Monitorwechsel werden unzugängliche Startpositionen zurückgeholt.
-- Freigabe abgeschlossener Hintergrundaufträge korrigiert, um Abstürze beim Beenden zu vermeiden.
-- Dauerhaft gesicherter Originalzustand und letzte Änderung zum Wiederherstellen. Prozessstartzeit sowie HWND/PID-Zuordnung schützen vor Zugriffen auf wiederverwendete Fenster. Fehlgeschlagene Anordnungen versuchen, vorherige Änderungen zurückzunehmen.
+- Der Launcher gibt die Anmeldedaten im Fenster der gerade gestarteten Wizard101-Instanz ein. Der Feldwechsel erfolgt per Tab-Tastendruck, das Abschicken per Enter.
+- Nach Tab wartet der Launcher kurz, bevor er das Passwort eingibt. Bei einem Übertragungsfehler bleibt das Fenster für die manuelle Anmeldung offen.
+- Die Benutzereinstellungen und gespeicherten Accounts werden aus dem vorhandenen lokalen Profil geladen.
 
-**Öffnen:** Launch → Laufende Instanzen → **Anordnen …** oder Extras → **Spielfenster anordnen**. Über **Fenster …** bei einem Account lässt sich seine Startvorgabe bearbeiten.
+**Update in der App:** Einstellungen → Updates → Updatekanal **beta** → Nach Updates suchen → Herunterladen → Neustarten & anwenden. Die App prüft die Dateigröße und die SHA-256-Prüfsumme vor dem Austausch.
 
-**Update:** Einstellungen → Updates → Kanal **beta** → Nach Updates suchen → Herunterladen → Neustarten & anwenden. Alternativ `WizQLauncher-v6.0.0-beta.6.exe` herunterladen und nach dem Beenden der alten Version starten. Das vorhandene lokale Profil wird weiterverwendet.
+**Manueller Download:** Die EXE und die zugehörige Prüfsumme stehen unter Assets. Die EXE ist nicht mit einem Herausgeberzertifikat signiert.
 
-**Spielgrafik:** Die neuen Maße betreffen Windows-Fenster und Spielbereich. Interne Renderauflösung und Kamera-Aspekt-Hooks aus Deimos sind nicht enthalten; bei gestrecktem Bild oder versetzten Klicks eine passende Auflösung im Spiel wählen und den Fenstermodus verwenden. Rahmenlose Fenster werden über den Launcher-Editor skaliert.
-
-Die Veröffentlichung erfolgt nach Python-/Qt-Tests, nativen Muster-Tests, realen Windows-Fensterprüfungen, EXE-Build und Start-/Updateprüfung mit Datenerhalt. DE-/US-Spielclients und gemischte Monitor-Skalierungen benötigen weiterhin Praxistests. Diese Version ist ein Prerelease.
+Dies ist eine Vorabversion. Die Windows-Tests und der Start der gepackten EXE werden im Release-Workflow geprüft. Die Anmeldung im echten DE- und US-Client benötigt einen Praxistest.
