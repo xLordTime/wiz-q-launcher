@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from cryptography.fernet import InvalidToken
-from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QThreadPool, QTimer
+from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QPalette, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -38,7 +38,7 @@ from .pages import AccountsPage, HelpPage, PlaytimePage
 from .paths import Paths, ProfileLock
 from .selection import selection_colors
 from .sessions import Sessions
-from .settings import get
+from .settings import STARTUP_PAGES, THEME_SETTINGS, get
 from .settings_page import SettingsPage
 from .storage import ProfileError, Store, check_database, restore_backup
 from .themes import BUILTINS, catalog, stylesheet
@@ -133,7 +133,7 @@ class Window(DesktopShell, QMainWindow):
         self.poll_pending = self.rpc_pending = False
         self.shutting_down = False
         self.updating = False
-        self.close_after_cloud = False
+        self.quit_pending = False
         self.found = []
         self.setWindowTitle("Wiz Q Launcher · " + __version__)
         self.setWindowIcon(app_icon())
@@ -166,28 +166,37 @@ class Window(DesktopShell, QMainWindow):
         self.fade.setDuration(120)
         self.fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.apply_theme()
-        self.navigate(0)
+        self.navigate(tuple(STARTUP_PAGES).index(get(store, "launcher_startup_page")))
         for i in range(6):
             QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self, activated=lambda index=i: self.navigate(index))
         QShortcut(QKeySequence("F1"), self, activated=lambda: self.open_help(""))
         QShortcut(QKeySequence("Ctrl+L"), self, activated=self.lock_vault)
         QShortcut(QKeySequence("Ctrl+Q"), self, activated=self.quit_app)
-        self.tray = None
-        if QSystemTrayIcon.isSystemTrayAvailable():
-            self.tray = QSystemTrayIcon(self.windowIcon(), self)
-            self.tray.setToolTip("Wiz Q Launcher 6")
-            menu = QMenu(self)
-            menu.addAction("Öffnen", self.reveal)
-            menu.addAction("Auswahl starten", self.launch_page.launch_selected)
-            menu.addAction("Tresor sperren", self.lock_vault)
-            menu.addSeparator()
-            menu.addAction("Beenden", self.quit_app)
-            self.tray.setContextMenu(menu)
-            self.tray.activated.connect(
-                lambda reason: self.reveal() if reason == QSystemTrayIcon.ActivationReason.Trigger else None
-            )
-            self.tray.show()
-        self.hotkeys = Hotkeys(QApplication.instance(), self.launch_page.launch_selected, self.hotkey_clip)
+        self.in_tray = False
+        self.tray = QSystemTrayIcon(self.windowIcon(), self)
+        self.tray.setToolTip("Wiz Q Launcher 6")
+        menu = QMenu(self)
+        menu.addAction("Öffnen", self.reveal)
+        menu.addAction("Auswahl starten", self.launch_page.launch_selected)
+        menu.addAction("Tresor sperren", self.lock_vault)
+        menu.addSeparator()
+        menu.addAction("Beenden", self.quit_app)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(
+            lambda reason: self.reveal() if reason == QSystemTrayIcon.ActivationReason.Trigger else None
+        )
+        self.hotkeys = None
+        self.apply_settings(
+            {
+                "launcher_tray_icon",
+                "launcher_keep_above",
+                "show_navigation_tree",
+                "show_launcher_toolbar",
+                "show_account_details",
+                "global_launch_shortcut",
+                "global_clip_shortcut",
+            }
+        )
         from integrations.discord_presence import DEFAULT_CLIENT_ID, DiscordRichPresence
 
         self.rpc = DiscordRichPresence(DEFAULT_CLIENT_ID)
@@ -202,6 +211,12 @@ class Window(DesktopShell, QMainWindow):
         QApplication.instance().installEventFilter(self)
         QTimer.singleShot(200, self.poll)
         self.addons_page.cloud.start()
+
+    def show_at_startup(self):
+        if get(self.store, "launcher_start_minimized") and self.store.get("tutorial_seen", False):
+            self.showMinimized()
+        else:
+            self.show()
 
     def apply_theme(self):
         themes = BUILTINS if self.safe_mode else catalog(self.paths.directory("themes"))
@@ -242,6 +257,47 @@ class Window(DesktopShell, QMainWindow):
 
     def addon_enabled(self, ident):
         return not self.safe_mode and self.store.get("addon:" + ident, True)
+
+    def apply_settings(self, changed):
+        if changed & THEME_SETTINGS:
+            self.apply_theme()
+        if "launcher_tray_icon" in changed:
+            self.update_tray_visibility()
+        if "launcher_keep_above" in changed:
+            flag = Qt.WindowType.WindowStaysOnTopHint
+            keep_above = get(self.store, "launcher_keep_above")
+            if bool(self.windowFlags() & flag) != keep_above:
+                visible, state = self.isVisible(), self.windowState()
+                self.setWindowFlag(flag, keep_above)
+                self.setWindowState(state)
+                if visible:
+                    self.show()
+        for key, widget in (
+            ("show_navigation_tree", self.navigation_tree),
+            ("show_launcher_toolbar", self.toolbar),
+            ("show_account_details", self.launch_page.details),
+        ):
+            if key in changed:
+                visible = get(self.store, key)
+                widget.setVisible(visible)
+                if key in self.actions:
+                    self.actions[key].setChecked(visible)
+        if "quicklaunch_default_count" in changed:
+            self.launch_page.quicklaunch_count = get(self.store, "quicklaunch_default_count")
+        if changed & {"global_launch_shortcut", "global_clip_shortcut"}:
+            if self.hotkeys:
+                self.hotkeys.close()
+            self.hotkeys = Hotkeys(
+                QApplication.instance(),
+                self.launch_page.launch_selected if get(self.store, "global_launch_shortcut") else None,
+                self.hotkey_clip if get(self.store, "global_clip_shortcut") else None,
+            )
+
+    def update_tray_visibility(self):
+        self.tray.setVisible(
+            QSystemTrayIcon.isSystemTrayAvailable()
+            and (self.in_tray or get(self.store, "launcher_tray_icon"))
+        )
 
     def eventFilter(self, obj, event):
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
@@ -286,9 +342,15 @@ class Window(DesktopShell, QMainWindow):
             task.signals.result.connect(done)
         task.signals.error.connect(self.notice)
         task.signals.done.connect(lambda: self.tasks.discard(task))
-        task.signals.done.connect(lambda: self.launch_tasks.discard(task))
+        if launch:
+            task.signals.done.connect(lambda: self.launch_task_finished(task))
         task.signals.done.connect(task.signals.deleteLater)
         (self.launch_pool if launch else self.pool).start(task)
+
+    def launch_task_finished(self, task):
+        self.launch_tasks.discard(task)
+        if self.quit_pending and not self.launch_tasks:
+            QTimer.singleShot(0, self.quit_app)
 
     def refresh_accounts(self):
         self.accounts_page.refresh()
@@ -364,7 +426,7 @@ class Window(DesktopShell, QMainWindow):
         self.store.set("tutorial_seen", True)
 
     def launch_accounts(self, accounts, region=None, language=None):
-        if self.addons_page.cloud.busy or self.close_after_cloud:
+        if self.addons_page.cloud.busy or self.quit_pending:
             self.notice("Nach dem Cloud-Abgleich kannst du neue Spielinstanzen starten.")
             return
         if self.updating:
@@ -391,10 +453,15 @@ class Window(DesktopShell, QMainWindow):
             self.run_task(Task(start), self.instance_started, launch=True)
 
     def instance_started(self, result):
+        minimize = (
+            not self.quit_pending and get(self.store, "launcher_minimize_on_launch") and self.isVisible()
+        )
         if result is None:
             self.notice(
                 "Steam-Start angefordert. Wähle den Spielserver und melde dich im offiziellen Launcher an."
             )
+            if minimize:
+                self.showMinimized()
             return
         if get(self.store, "auto_playtime_tracking"):
             self.sessions.start(
@@ -412,9 +479,11 @@ class Window(DesktopShell, QMainWindow):
         self.addons_page.emit_event("session.started", {"region": result["region"], "pid": result["pid"]})
         self.webhook("start", result["account_id"])
         self.poll()
+        if minimize and not result["warning"]:
+            self.showMinimized()
 
     def launch_steam(self):
-        if self.updating or self.close_after_cloud:
+        if self.updating or self.quit_pending:
             self.notice("Warte, bis der Launcher den laufenden Vorgang abgeschlossen hat.")
             return
         if len(self.launch_tasks) >= 32:
@@ -423,7 +492,7 @@ class Window(DesktopShell, QMainWindow):
         self.run_task(Task(backend.open_steam), self.instance_started, launch=True)
 
     def poll(self):
-        if self.poll_pending or self.shutting_down or self.close_after_cloud:
+        if self.poll_pending or self.shutting_down or self.quit_pending:
             return
         self.poll_pending = True
 
@@ -561,7 +630,7 @@ class Window(DesktopShell, QMainWindow):
             self.addons_page.capture.save_clip()
 
     def request_restore(self, path):
-        if self.addons_page.cloud.busy or self.close_after_cloud:
+        if self.addons_page.cloud.busy or self.quit_pending:
             self.notice("Nach dem Cloud-Abgleich kannst du die Sicherung wiederherstellen.")
             return
 
@@ -581,9 +650,14 @@ class Window(DesktopShell, QMainWindow):
         self.guard(request)
 
     def reveal(self):
-        self.showNormal()
+        if self.quit_pending:
+            return
+        self.in_tray = False
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
+        self.show()
         self.raise_()
         self.activateWindow()
+        self.update_tray_visibility()
 
     def quit_app(self):
         self.force_quit = True
@@ -591,16 +665,20 @@ class Window(DesktopShell, QMainWindow):
 
     def closeEvent(self, event):
         cloud = self.addons_page.cloud
-        if not self.force_quit and self.tray and get(self.store, "close_to_tray"):
-            self.hide()
-            event.ignore()
-        elif self.launch_tasks:
-            self.notice("Startvorgänge laufen noch. Nach Abschluss erneut beenden.")
-            self.force_quit = False
-            event.ignore()
-        elif cloud.busy or cloud.flush_on_exit():
-            self.close_after_cloud = True
-            self.notice("Der Launcher beendet sich nach dem Cloud-Abgleich …")
+        if not (self.force_quit or self.updating or self.quit_pending or self.shutting_down):
+            action = get(self.store, "launcher_close_action")
+            if action != "quit":
+                event.ignore()
+                if action == "tray" and QSystemTrayIcon.isSystemTrayAvailable():
+                    self.in_tray = True
+                    self.update_tray_visibility()
+                    self.hide()
+                else:
+                    self.showMinimized()
+                return
+        if self.launch_tasks or cloud.busy or cloud.flush_on_exit():
+            self.quit_pending = True
+            self.notice("Der Launcher beendet sich nach Abschluss der laufenden Vorgänge …")
             self.setEnabled(False)
             event.ignore()
         else:
@@ -618,11 +696,13 @@ class Window(DesktopShell, QMainWindow):
         self.launch_pool.waitForDone()
         self.rpc.close()
         self.sessions.stop()
-        self.store.set("window_size", [self.width(), self.height()])
-        self.store.set("desktop_split", self.desktop_split.sizes())
+        size = self.normalGeometry().size()
+        if size.isValid():
+            self.store.set("window_size", [size.width(), size.height()])
+        if get(self.store, "show_navigation_tree"):
+            self.store.set("desktop_split", self.desktop_split.sizes())
         self.store.set("launch_split", self.launch_page.splitter.sizes())
-        if self.tray:
-            self.tray.hide()
+        self.tray.hide()
 
 
 def startup_profile(paths, exe_dir):
@@ -733,7 +813,7 @@ def main(argv=None):
         if store is None:
             return 0
         window = Window(paths, store, vault, args.safe_mode)
-        window.show()
+        window.show_at_startup()
         store.set("last_successful_version", __version__, meta=True)
         if not store.get("tutorial_seen", False):
             QTimer.singleShot(300, window.tutorial)

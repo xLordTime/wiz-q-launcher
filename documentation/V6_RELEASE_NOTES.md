@@ -1,7 +1,12 @@
-## Wiz Q Launcher 6.0.3
+## Wiz Q Launcher 6.0.4 Beta 1
 
-Wizard101-Accounts aus Steam haben jetzt eine eigene Startmethode. Öffne die Eigenschaften des Accounts, wähle **Startmethode → Über Steam** und starte ihn über die Accountliste. Alternativ öffnet **Datei → Wizard101 über Steam starten** die Steam-Version direkt.
+Unter **Einstellungen → Allgemein → Verhalten beim Schließen (X)** wählst du zwischen **Launcher vollständig beenden**, **In die Taskleiste minimieren** und **Im Infobereich weiterlaufen**. **Datei → Beenden**, **Strg+Q** und **Beenden** im Tray-Menü schließen den Launcher vollständig. Fehlt der Infobereich, minimiert die dritte Auswahl in die Taskleiste.
 
-Steam startet den offiziellen Wizard101-Launcher. Dort wählst du den Spielserver aus der Account-Erstellung und meldest dich an. Die Server- und Spracheinstellungen in Wiz Q gelten für den Direktstart der eigenständigen Installation.
+- **Allgemein** bietet jetzt eine wählbare Startseite, minimierten Start, ein Vordergrundfenster und ein dauerhaftes Tray-Symbol als Option.
+- **Darstellung** schaltet Navigationsbaum, Werkzeugleiste und Accountdetails einzeln ein oder aus.
+- **Launcher & Regionen** enthält die voreingestellte Anzahl leerer Quicklaunch-Instanzen, das Laden der letzten Accountauswahl und das Minimieren nach erfolgreichem Spielstart.
+- **Fenster & Shortcuts** schaltet die globalen Tastenkürzel für den Spielstart und Replay-Clips getrennt.
 
-Unter **Einstellungen → Updates** im Kanal **stable** nach Updates suchen, herunterladen und **Neustarten & anwenden** wählen. Windows-EXE, Testanleitung und SHA-256-Prüfsumme stehen unter Assets.
+Die neuen Optionen gelten pro PC. Beim ersten Öffnen übernimmt das Schließverhalten die bisherige Einstellung. Bestehende Profile können direkt weiterverwendet werden.
+
+Im Launcher unter **Einstellungen → Updates** den Kanal **Beta** wählen, nach Updates suchen und nach dem Download **Neustarten & anwenden** wählen. Windows-EXE, Testanleitung und SHA-256-Prüfsumme stehen unter Assets.

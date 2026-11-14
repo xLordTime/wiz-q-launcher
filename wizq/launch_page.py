@@ -42,7 +42,12 @@ class LaunchPage(QWidget):
     def __init__(self, window):
         super().__init__()
         self.window = window
-        self.checked = set(window.store.get("last_launch_selection", []))
+        self.checked = (
+            set(window.store.get("last_launch_selection", []))
+            if get(window.store, "remember_launch_selection")
+            else set()
+        )
+        self.quicklaunch_count = get(window.store, "quicklaunch_default_count")
         self.account_data = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -179,9 +184,6 @@ class LaunchPage(QWidget):
         self.launch_button.setIcon(desktop_icon("play", "#639544"))
         bottom.addWidget(self.launch_button)
         layout.addLayout(bottom)
-        self.count = QSpinBox(self)
-        self.count.hide()
-        self.count.setRange(1, 8)
         self.region.currentIndexChanged.connect(self.refresh)
         self.group.currentIndexChanged.connect(self.refresh)
         self.search.textChanged.connect(self.refresh)
@@ -397,7 +399,7 @@ class LaunchPage(QWidget):
         region.setCurrentIndex(max(0, region.findData(selected)))
         count = QSpinBox()
         count.setRange(1, 8)
-        count.setValue(self.count.value())
+        count.setValue(self.quicklaunch_count)
         language = Combo()
         language.setAccessibleName("Quicklaunch-Spielsprachwahl")
         language.addItem("Sprache des Serverprofils", None)
@@ -430,7 +432,7 @@ class LaunchPage(QWidget):
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         if dialog.exec():
-            self.count.setValue(count.value())
+            self.quicklaunch_count = count.value()
             args = ([None] * count.value(), region.currentData())
             if language.currentData() is None:
                 self.window.launch_accounts(*args)

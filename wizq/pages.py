@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from .sessions import duration
-from .settings import REGIONS, SETTINGS, get
+from .settings import REGIONS, SETTING_CHOICES, SETTINGS, get
 from .widgets import Button, Combo, label, row
 
 ROLE = Qt.ItemDataRole.UserRole
@@ -428,8 +428,11 @@ class HelpPage(QWidget):
         layout.addWidget(split, 1)
         self.articles = dict(ARTICLES)
         for spec in SETTINGS:
+            if spec.hidden:
+                continue
+            default = SETTING_CHOICES.get(spec.key, {}).get(spec.default, spec.default)
             self.articles["Einstellung · " + spec.title] = (
-                f"# {spec.title}\n\nBereich: **{spec.section}**\n\n{spec.help}\n\nStandardwert: **{spec.default}**\n\nTechnischer Schlüssel: **{spec.key}**"
+                f"# {spec.title}\n\nBereich: **{spec.section}**\n\n{spec.help}\n\nStandardwert: **{default}**\n\nTechnischer Schlüssel: **{spec.key}**"
             )
         self.topics.currentTextChanged.connect(
             lambda title: self.body.setMarkdown(self.articles.get(title, ""))

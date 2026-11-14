@@ -1,12 +1,21 @@
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QSpinBox, QStyleOptionViewItem
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QDialog,
+    QSpinBox,
+    QStyleOptionViewItem,
+    QSystemTrayIcon,
+)
 
 from wizq.app import Window
 from wizq.cloud import new_code
 from wizq.desktop import Location
 from wizq.pages import AccountDialog
 from wizq.selection import contrast, mix, selection_colors
+from wizq.settings import get, set_value
 from wizq.themes import BUILTINS, DESKTOP_THEMES, catalog
 
 
@@ -90,6 +99,122 @@ def test_settings_and_addon_submenus_have_clickable_parents(desktop):
     assert window.location == Location()
     window.go(Location(4))
     assert not window.actions["forward"].isEnabled()
+
+
+@pytest.mark.parametrize(
+    ("action", "available", "quit_requested", "minimized", "hidden"),
+    (
+        ("quit", True, True, False, False),
+        ("minimize", True, False, True, False),
+        ("tray", True, False, False, True),
+        ("tray", False, False, True, False),
+    ),
+)
+def test_close_button_obeys_setting(
+    desktop, monkeypatch, action, available, quit_requested, minimized, hidden
+):
+    window, app, *_ = desktop
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: available)
+    quit_calls = []
+    monkeypatch.setattr(app, "quit", lambda: quit_calls.append(True))
+    controls = window.settings_page.controls
+    window.go(Location(4, section="Allgemein"))
+    controls["launcher_tray_icon"].setChecked(False)
+    control = controls["launcher_close_action"]
+    control.setCurrentIndex(control.findData(action))
+    assert get(window.store, "launcher_close_action") == action
+    assert not window.tray.isVisible()
+    event = QCloseEvent()
+    window.closeEvent(event)
+    assert event.isAccepted() is quit_requested
+    assert bool(quit_calls) is quit_requested
+    assert window.isMinimized() is minimized
+    assert window.isHidden() is hidden
+    assert window.in_tray is hidden
+    assert window.tray.isVisible() is hidden
+    if hidden:
+        window.reveal()
+        assert window.isVisible() and not window.in_tray and not window.tray.isVisible()
+
+
+def test_explicit_quit_ignores_minimize_and_finishes_cloud_work(desktop, monkeypatch):
+    window, app, *_ = desktop
+    set_value(window.store, "launcher_close_action", "minimize")
+    calls = []
+    monkeypatch.setattr(app, "quit", lambda: calls.append("quit"))
+    cloud = window.addons_page.cloud
+    cloud.busy = True
+    window.quit_app()
+    assert window.quit_pending
+    assert not window.isMinimized() and not calls
+    cloud.finished()
+    app.processEvents()
+    assert calls == ["quit"]
+
+
+def test_close_waits_for_game_launch_then_quits_without_second_click(desktop, monkeypatch):
+    window, app, *_ = desktop
+    set_value(window.store, "launcher_close_action", "quit")
+    calls = []
+    monkeypatch.setattr(app, "quit", lambda: calls.append("quit"))
+    task = object()
+    window.launch_tasks.add(task)
+    event = QCloseEvent()
+    window.closeEvent(event)
+    assert not event.isAccepted() and window.quit_pending and not calls
+    window.launch_task_finished(task)
+    app.processEvents()
+    assert calls == ["quit"]
+
+
+def test_desktop_settings_sync_menu_and_window_controls(desktop):
+    window, app, *_ = desktop
+    window.go(Location(4, section="Darstellung"))
+    controls = window.settings_page.controls
+    controls["show_navigation_tree"].setChecked(False)
+    assert window.navigation_tree.isHidden()
+    assert not window.actions["show_navigation_tree"].isChecked()
+    window.actions["show_navigation_tree"].trigger()
+    assert controls["show_navigation_tree"].isChecked()
+    assert not window.navigation_tree.isHidden()
+    window.actions["show_launcher_toolbar"].trigger()
+    assert window.toolbar.isHidden() and not controls["show_launcher_toolbar"].isChecked()
+    controls["show_account_details"].setChecked(False)
+    assert window.launch_page.details.isHidden()
+    controls["launcher_keep_above"].setChecked(True)
+    assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert window.isVisible()
+    controls["launcher_keep_above"].setChecked(False)
+    assert not window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    app.processEvents()
+
+
+def test_new_startup_preferences_load_from_profile(profile, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    paths, store, vault = profile
+    store.set("tutorial_seen", True)
+    store.set("performance", "eco")
+    store.set("discord_rich_presence", False)
+    set_value(store, "launcher_start_minimized", True)
+    set_value(store, "launcher_startup_page", "playtime")
+    set_value(store, "remember_launch_selection", False)
+    set_value(store, "quicklaunch_default_count", 3)
+    ident = store.save_account(vault, "Example", "user", "password", "de")
+    store.set("last_launch_selection", [ident])
+    monkeypatch.setattr(Window, "poll", lambda *_: None)
+    monkeypatch.setattr("wizq.app.Hotkeys", lambda *args: type("Keys", (), {"close": lambda self: None})())
+    window = Window(paths, store, vault)
+    try:
+        window.show_at_startup()
+        assert window.isMinimized()
+        assert window.location == Location(2)
+        assert not window.launch_page.selected_ids()
+        assert window.launch_page.quicklaunch_count == 3
+    finally:
+        window.shutdown()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
 
 
 def test_cloud_page_creates_a_profile_in_the_chosen_folder(desktop, tmp_path, monkeypatch):

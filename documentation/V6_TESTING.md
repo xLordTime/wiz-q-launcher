@@ -1,15 +1,23 @@
-# Wiz Q Launcher 6.0.3 testen
+# Wiz Q Launcher 6.0.4 Beta 1 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
 ## Download und Start
 
-1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **stable** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
-2. Für den eigenständigen Start **WizQLauncher-v6.0.3.exe** aus dem [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.3) herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten.
+1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **Beta** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
+2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.1.exe** aus dem [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.1) herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten.
 3. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
 4. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
 Das Profil liegt unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert die alten Quelldateien nicht. Ein Launcher-Profil kann jeweils nur von einer laufenden Launcher-Instanz geöffnet werden.
+
+## Fensterverhalten und Einstellungen
+
+1. Unter **Einstellungen → Allgemein → Verhalten beim Schließen (X)** nacheinander **Launcher vollständig beenden** und **In die Taskleiste minimieren** wählen. Unter **Im Infobereich weiterlaufen** lässt sich das Fenster über das Tray-Symbol wieder öffnen.
+2. **Datei → Beenden** und **Strg+Q** auch bei gewähltem Minimieren prüfen. Beide schließen die Anwendung vollständig, sobald laufende Spielstarts und Cloud-Abgleiche abgeschlossen sind.
+3. **Launcher minimiert starten**, **Startseite** und **Launcher im Vordergrund halten** prüfen. Die Startseite wird beim nächsten Start geöffnet.
+4. Unter **Darstellung** Navigationsbaum, Werkzeugleiste und Accountdetails aus- und einblenden. Die ersten beiden Optionen stehen auch unter **Ansicht** bereit.
+5. Unter **Launcher & Regionen** die letzte Startauswahl, die voreingestellte Anzahl im Quicklaunch und das Minimieren nach dem Spielstart prüfen. Unter **Fenster & Shortcuts** die beiden globalen Tastenkürzel einzeln umschalten.
 
 ## Steam-Account testen
 

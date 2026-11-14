@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v6.0.4-beta.1
+
+- Choose what the window close button does on each PC: exit, minimize to the taskbar, or continue in the notification area.
+- Configure startup page and minimized startup, always-on-top behavior, the notification-area icon, navigation tree, toolbar and account details.
+- Set the Quicklaunch default count, decide whether to load the previous launch selection, minimize after game launch, and toggle the two global shortcuts independently.
+
 ## v6.0.3
 
 - Wizard101 accounts created through Steam can open the official Steam launcher from the account list. The File menu also offers a Steam launch without a saved account.

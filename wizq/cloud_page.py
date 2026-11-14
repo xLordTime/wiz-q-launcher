@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from .cloud import CloudSync, new_code
 from .cloud_files import CLOUD_DIRECTORY
+from .settings import get
 from .widgets import Button, Task, label, row
 
 
@@ -267,7 +268,7 @@ class CloudPage(QWidget):
     def finished(self):
         self.busy = False
         self.refresh()
-        if self.window.close_after_cloud:
+        if self.window.quit_pending:
             QTimer.singleShot(0, self.window.quit_app)
 
     def completed(self, result, after):
@@ -281,7 +282,10 @@ class CloudPage(QWidget):
             self.start()
         window = self.window
         changed = result.changed
-        if "settings/last_launch_selection" in changed:
+        selection_changed = "settings/last_launch_selection" in changed and get(
+            window.store, "remember_launch_selection"
+        )
+        if selection_changed:
             window.launch_page.checked = set(window.store.get("last_launch_selection", []))
         if any(key.startswith(("accounts/", "groups/")) for key in changed):
             with window.store.lock:
@@ -293,7 +297,7 @@ class CloudPage(QWidget):
         else:
             if any(key.startswith("launch_profiles/") for key in changed):
                 window.launch_page.refresh_groups()
-            elif "settings/last_launch_selection" in changed:
+            elif selection_changed:
                 window.launch_page.refresh()
             if window.stack.currentIndex() == 2 and any(
                 key.startswith(("sessions/", "activity/", "recent/")) for key in changed
@@ -311,7 +315,7 @@ class CloudPage(QWidget):
             {"settings/theme", "settings/font_size", "settings/animations", "settings/performance"}
         ):
             window.apply_theme()
-        if after and not window.close_after_cloud:
+        if after and not window.quit_pending:
             QTimer.singleShot(0, after)
 
     def flush_on_exit(self):

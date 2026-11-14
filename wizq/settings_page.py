@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from . import backend, updates
 from .cloud import META
 from .cloud_profile import CHECKPOINT
-from .settings import GAME_LANGUAGES, SETTINGS, get, set_value
+from .settings import GAME_LANGUAGES, SETTING_CHOICES, SETTINGS, get, set_value
 from .storage import Store
 from .themes import catalog
 from .vault import Vault
@@ -56,8 +56,7 @@ class SettingsPage(QWidget):
         self.body.setSpacing(12)
         self.rows, self.controls = [], {}
         for spec in SETTINGS:
-            if spec.key == "borderless":
-                # Read/import the legacy flag, but expose only the new mode selector.
+            if spec.hidden:
                 continue
             card = QFrame()
             card.setObjectName("settingRow")
@@ -79,13 +78,17 @@ class SettingsPage(QWidget):
                 )
             elif spec.choices:
                 control = Combo()
-                for choice in spec.choices:
-                    title = GAME_LANGUAGES[choice] if spec.key.startswith("region_language_") else str(choice)
-                    if spec.key in ("window_layout", "window_mode"):
-                        from .windowing import LAYOUTS, MODES
+                titles = (
+                    GAME_LANGUAGES
+                    if spec.key.startswith("region_language_")
+                    else SETTING_CHOICES.get(spec.key, {})
+                )
+                if spec.key in ("window_layout", "window_mode"):
+                    from .windowing import LAYOUTS, MODES
 
-                        title = (LAYOUTS if spec.key == "window_layout" else MODES)[choice]
-                    control.addItem(title, choice)
+                    titles = LAYOUTS if spec.key == "window_layout" else MODES
+                for choice in spec.choices:
+                    control.addItem(titles.get(choice, str(choice)), choice)
                 control.setCurrentIndex(max(0, control.findData(value)))
                 control.currentIndexChanged.connect(
                     lambda _, k=spec.key, c=control: self.save(k, c.currentData())
@@ -150,11 +153,14 @@ class SettingsPage(QWidget):
     def save(self, key, value):
         try:
             set_value(self.window.store, key, value)
-            if key in ("theme", "animations", "performance", "font_size"):
-                self.window.apply_theme()
-            self.window.notice("Gespeichert", transient=True)
         except Exception as exc:
             self.window.notice("Nicht gespeichert: " + str(exc))
+            return
+        self.window.apply_settings({key})
+        if key in ("show_navigation_tree", "show_launcher_toolbar"):
+            with QSignalBlocker(self.controls[key]):
+                self.controls[key].setChecked(value)
+        self.window.notice("Gespeichert", transient=True)
 
     def refresh_window_settings(self):
         for key in ("window_layout", "window_mode", "window_gap", "window_margin"):
@@ -167,6 +173,8 @@ class SettingsPage(QWidget):
                     control.setCurrentIndex(max(0, control.findData(value)))
 
     def refresh_cloud_settings(self, changed, themes):
+        if "settings/close_to_tray" in changed:
+            changed = changed | {"settings/launcher_close_action"}
         for key, control in self.controls.items():
             if "settings/" + key not in changed and not (key == "theme" and themes):
                 continue
@@ -422,7 +430,7 @@ class SettingsPage(QWidget):
 
     def apply_update(self):
         if self.update_info and self.update_path:
-            if self.window.addons_page.cloud.busy or self.window.close_after_cloud:
+            if self.window.addons_page.cloud.busy or self.window.quit_pending:
                 self.window.notice("Nach dem Cloud-Abgleich kannst du das Update anwenden.")
                 return
             if self.window.launch_tasks:

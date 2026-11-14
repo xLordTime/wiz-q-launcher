@@ -7,8 +7,22 @@ import pytest
 from cryptography.exceptions import InvalidTag
 
 from wizq.paths import ProfileLock
+from wizq.settings import get, set_value
 from wizq.storage import Store, check_database, restore_backup
 from wizq.vault import Vault
+
+
+def test_close_action_migrates_legacy_preference_without_overwriting_it(profile):
+    _, store, _ = profile
+    assert get(store, "launcher_close_action") == "tray"
+    set_value(store, "close_to_tray", False)
+    assert get(store, "launcher_close_action") == "quit"
+    set_value(store, "launcher_close_action", "minimize")
+    assert get(store, "launcher_close_action") == "minimize"
+    assert store.get("close_to_tray") is False
+    with pytest.raises(ValueError):
+        set_value(store, "launcher_close_action", "unknown")
+    assert get(store, "launcher_close_action") == "minimize"
 
 
 def test_vault_authentication_and_password_change(profile):

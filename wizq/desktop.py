@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from functools import lru_cache
 
+from packaging.version import Version
 from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
@@ -23,11 +24,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import __version__
 from .addons import BUILTINS as ADDONS
+from .settings import STARTUP_PAGES, get
 from .widgets import Button
 
 ROLE = Qt.ItemDataRole.UserRole
-PAGE_NAMES = ("Alle Accounts", "Accounts verwalten", "Spielzeit", "Addons", "Einstellungen", "Hilfe")
+PAGE_NAMES = tuple(STARTUP_PAGES.values())
 PAGE_ICONS = ("accounts", "account", "clock", "addon", "settings", "help")
 ADDON_NAMES = ("Verwalten", *(name for _, name, _ in ADDONS))
 
@@ -169,7 +172,7 @@ class DesktopShell:
         self.status = QLabel("Bereit · Daten lokal geschützt")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.statusBar().addWidget(self.status, 1)
-        version = QLabel("Lokales Profil · Beta")
+        version = QLabel("Lokales Profil · Beta" if Version(__version__).is_prerelease else "Lokales Profil")
         version.setObjectName("versionStatus")
         self.statusBar().addPermanentWidget(version)
         self.actions = {}
@@ -259,7 +262,20 @@ class DesktopShell:
         self.addToolBar(toolbar)
         self.toolbar = toolbar
         view_menu.addSeparator()
-        view_menu.addAction(toolbar.toggleViewAction())
+        sidebar_action = action(
+            "show_navigation_tree",
+            "Navigationsbaum",
+            lambda visible: self.settings_page.save("show_navigation_tree", visible),
+        )
+        sidebar_action.setCheckable(True)
+        sidebar_action.setChecked(get(self.store, "show_navigation_tree"))
+        view_menu.addAction(sidebar_action)
+        toolbar_action = toolbar.toggleViewAction()
+        toolbar_action.triggered.connect(
+            lambda visible: self.settings_page.save("show_launcher_toolbar", visible)
+        )
+        self.actions["show_launcher_toolbar"] = toolbar_action
+        view_menu.addAction(toolbar_action)
         self.settings_page.categories.currentTextChanged.connect(self.section_changed)
         self.addons_page.navigation.currentRowChanged.connect(lambda _: self.section_changed())
         self.launch_page.group.currentIndexChanged.connect(self.launch_group_changed)
@@ -454,9 +470,6 @@ class DesktopShell:
 
     def launch_empty_dialog(self):
         self.launch_page.empty_dialog()
-
-    def collapse_sidebar(self):
-        self.navigation_tree.setVisible(not self.navigation_tree.isVisible())
 
     def desktop_theme_changed(self):
         for key in ("back", "forward", "up"):

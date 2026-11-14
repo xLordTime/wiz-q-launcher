@@ -40,7 +40,12 @@ COLUMNS = {
 
 
 def portable_setting(key):
-    return key not in LOCAL_SETTINGS and not key.startswith(("region_install_", "cloud_"))
+    spec = BY_KEY.get(key)
+    return (
+        key not in LOCAL_SETTINGS
+        and not key.startswith(("region_install_", "cloud_"))
+        and not (spec and spec.local)
+    )
 
 
 def profile_records(store, vault):

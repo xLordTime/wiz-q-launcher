@@ -1,12 +1,12 @@
 # Wiz Q Launcher 6
-**Version 6.0.3 for Windows, rebuilt with PySide6.**
+**Version 6.0.4 Beta 1 for Windows, rebuilt with PySide6.**
 
 A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 3 desktop presets plus 20 themes, optional addons, Discord and a crash-resistant profile.
 
 ![PySide6 preview with synthetic example accounts](documentation/images/v6-aero-explorer.png)
 
 ## Start
-Download the Windows EXE from [Releases](https://github.com/xLordTime/wiz-q-launcher/releases/latest). Python and Rust are not required to run it. For updates in the launcher, choose the stable channel under Settings → Updates.
+Download the Windows EXE from [Releases](https://github.com/xLordTime/wiz-q-launcher/releases). Python and Rust are not required to run it. In Settings → Updates choose **Beta** for prereleases or **Stable** for production releases.
 
 The first 5.x → 6.0 transition may download a new EXE and require starting it once. Subsequent 6.x updates use the new verified-download/relay flow. The profile remains in **%LOCALAPPDATA%/WizQLauncher**.
 
@@ -20,6 +20,7 @@ First start:
 - Clear checked-account state with visible ticks, Startauswahl labels and high-contrast focused/unfocused selection in all themes.
 - Native Explorer window, menu/toolbar, account and instance tables, resizable splitters.
 - Interactive breadcrumb menus synchronized with the tree, back/forward/up navigation.
+- Per-device settings for the close button, minimized startup, default page, tray icon, window priority, visible controls, global shortcuts and Quicklaunch.
 - Launch, Account Management, Playtime, Addons, Settings, Help.
 - Nickname/username/password, groups, drag & drop, favorites, saved launch selections.
 - SQLite WAL/FULL, serialized transactions, checked rotating snapshots, original-preserving restore.

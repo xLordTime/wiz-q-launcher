@@ -24,6 +24,27 @@ GAME_LANGUAGES = {
     "gr": "Ελληνικά",
 }
 
+CLOSE_ACTIONS = {
+    "quit": "Launcher vollständig beenden",
+    "minimize": "In die Taskleiste minimieren",
+    "tray": "Im Infobereich weiterlaufen",
+}
+STARTUP_PAGES = {
+    "launch": "Alle Accounts",
+    "accounts": "Accounts verwalten",
+    "playtime": "Spielzeit",
+    "addons": "Addons",
+    "settings": "Einstellungen",
+    "help": "Hilfe",
+}
+SETTING_CHOICES = {
+    "launcher_close_action": CLOSE_ACTIONS,
+    "launcher_startup_page": STARTUP_PAGES,
+    "performance": {"eco": "Sparsam", "balanced": "Ausgewogen", "effects": "Effekte"},
+    "update_channel": {"stable": "Stable", "beta": "Beta"},
+}
+THEME_SETTINGS = {"theme", "animations", "performance", "font_size"}
+
 
 def game_language(store, region, override=None):
     if region not in REGIONS:
@@ -44,6 +65,8 @@ class Setting:
     choices: tuple = ()
     low: int = 0
     high: int = 100000
+    local: bool = False
+    hidden: bool = False
 
 
 SETTINGS = [
@@ -56,11 +79,54 @@ SETTINGS = [
         ("de", "en"),
     ),
     Setting(
+        "launcher_close_action",
+        "Allgemein",
+        "Verhalten beim Schließen (X)",
+        "tray",
+        "Wähle Beenden, Minimieren in die Taskleiste oder Weiterlaufen im Infobereich. Fehlt der Infobereich, minimiert der Launcher in die Taskleiste. Datei → Beenden und Strg+Q beenden vollständig.",
+        tuple(CLOSE_ACTIONS),
+        local=True,
+    ),
+    Setting(
         "close_to_tray",
         "Allgemein",
         "Beim Schließen im Tray weiterlaufen",
         True,
         "Damit wird Spielzeit weiter erfasst. Vollständig beenden über das Tray-Menü oder Strg+Q.",
+        hidden=True,
+    ),
+    Setting(
+        "launcher_start_minimized",
+        "Allgemein",
+        "Launcher minimiert starten",
+        False,
+        "Öffnet das Fenster nach dem Entsperren minimiert in der Taskleiste.",
+        local=True,
+    ),
+    Setting(
+        "launcher_startup_page",
+        "Allgemein",
+        "Startseite",
+        "launch",
+        "Legt fest, welcher Bereich beim Start des Launchers geöffnet wird.",
+        tuple(STARTUP_PAGES),
+        local=True,
+    ),
+    Setting(
+        "launcher_keep_above",
+        "Allgemein",
+        "Launcher im Vordergrund halten",
+        False,
+        "Hält das Launcher-Fenster über anderen Fenstern auf diesem PC.",
+        local=True,
+    ),
+    Setting(
+        "launcher_tray_icon",
+        "Allgemein",
+        "Tray-Symbol dauerhaft anzeigen",
+        True,
+        "Zeigt das Symbol auch bei geöffnetem Fenster. Beim Weiterlaufen im Infobereich erscheint es zum Wiederöffnen.",
+        local=True,
     ),
     Setting(
         "theme",
@@ -94,12 +160,62 @@ SETTINGS = [
         high=18,
     ),
     Setting(
+        "show_navigation_tree",
+        "Darstellung",
+        "Navigationsbaum anzeigen",
+        True,
+        "Blendet die Baumansicht links ein. Pfadleiste und Menü Ansicht öffnen die Bereiche ebenfalls.",
+        local=True,
+    ),
+    Setting(
+        "show_launcher_toolbar",
+        "Darstellung",
+        "Werkzeugleiste anzeigen",
+        True,
+        "Zeigt die Leiste mit Navigation, Starten, Account- und Sicherungsaktionen.",
+        local=True,
+    ),
+    Setting(
+        "show_account_details",
+        "Darstellung",
+        "Accountdetails im Startbereich anzeigen",
+        True,
+        "Zeigt den ausgewählten Account mit Spielzeit, Gruppe und Schnellzugriffen unter der Accountliste.",
+        local=True,
+    ),
+    Setting(
         "current_region",
         "Launcher & Regionen",
         "Standardregion",
         "de",
         "DE und US sind getrennte Installationen/Startprofile. Ein fehlender Pfad wird nie durch eine andere Region ersetzt.",
         tuple(REGIONS),
+    ),
+    Setting(
+        "launcher_minimize_on_launch",
+        "Launcher & Regionen",
+        "Launcher nach Spielstart minimieren",
+        False,
+        "Minimiert den Launcher nach einem erfolgreichen Direktstart. Bei Steam erfolgt das beim Öffnen des offiziellen Launchers. Meldungen zum Autologin bleiben sichtbar.",
+        local=True,
+    ),
+    Setting(
+        "remember_launch_selection",
+        "Launcher & Regionen",
+        "Letzte Startauswahl beim Öffnen laden",
+        True,
+        "Übernimmt die zuletzt gestarteten Accounts beim Öffnen und beim Cloud-Abgleich in die Checkboxen. Gespeicherte Startprofile sind separat auswählbar.",
+        local=True,
+    ),
+    Setting(
+        "quicklaunch_default_count",
+        "Launcher & Regionen",
+        "Quicklaunch · Anzahl leerer Instanzen",
+        1,
+        "Startwert im Dialog Leere Instanz. Die Auswahl im Dialog gilt für die laufende Launcher-Sitzung.",
+        low=1,
+        high=8,
+        local=True,
     ),
     Setting(
         "parallel_launches",
@@ -145,6 +261,22 @@ SETTINGS = [
         "Verwendet nur den Nickname, niemals Username oder Passwort.",
     ),
     Setting(
+        "global_launch_shortcut",
+        "Fenster & Shortcuts",
+        "Globaler Shortcut für Spielstart",
+        True,
+        "Strg+Alt+L startet die sichtbare Accountauswahl auch bei minimiertem Launcher. F5 funktioniert innerhalb des Launchers.",
+        local=True,
+    ),
+    Setting(
+        "global_clip_shortcut",
+        "Fenster & Shortcuts",
+        "Globaler Shortcut für Replay-Clip",
+        True,
+        "Strg+Alt+C speichert einen Clip aus dem laufenden Replay-Puffer. Der Button im Add-on bleibt verfügbar.",
+        local=True,
+    ),
+    Setting(
         "window_layout",
         "Fenster & Shortcuts",
         "Fensteranordnung",
@@ -170,6 +302,7 @@ SETTINGS = [
         "Rahmenlose Fenster beim Anordnen",
         False,
         "Entfernt die Titelleiste bei der Anordnung. Normale Fensterrahmen lassen sich über dieselbe Einstellung wiederherstellen.",
+        hidden=True,
     ),
     Setting(
         "window_mode",
@@ -388,6 +521,14 @@ BY_KEY = {s.key: s for s in SETTINGS}
 
 def get(store, key):
     spec = BY_KEY[key]
+    if key == "launcher_close_action":
+        chosen = store.get(key)
+        if chosen in spec.choices:
+            return chosen
+        return "tray" if store.get("close_to_tray", True) else "quit"
+    if key == "launcher_startup_page":
+        chosen = store.get(key, spec.default)
+        return chosen if chosen in spec.choices else spec.default
     if key == "window_mode" and store.get(key) is None:
         return "borderless" if store.get("borderless", False) else spec.default
     return store.get(key, spec.default)
