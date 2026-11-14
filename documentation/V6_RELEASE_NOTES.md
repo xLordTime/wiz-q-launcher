@@ -1,10 +1,13 @@
-**Wiz Q Launcher 6.0.0**
+## Wiz Q Launcher 6.0.1
 
-- Die neu gestaltete Windows-Oberfläche bietet Accountgruppen, Startprofile, Themes und eine Übersicht der laufenden Spielinstanzen.
-- Auto-Login gibt Benutzername und Passwort in getrennte Felder der neu gestarteten Wizard101-Instanz ein. Der Launcher wechselt per Tab ins Passwortfeld und bestätigt per Enter. Bei einem Übertragungsfehler bleibt die manuelle Anmeldung möglich.
-- Der Fenstereditor bietet Monitorwahl, Ziehen und Skalieren, Rahmenlosmodus und speicherbare Layouts.
-- Gespeicherte Accounts und Einstellungen werden aus dem bestehenden lokalen Profil übernommen. Für den Umstieg von 5.x steht der Profilimport zur Verfügung.
+**Cloud-Synchronisierung** ist ein neues Add-on für dasselbe Launcher-Profil auf mehreren PCs. Accounts mit Zugangsdaten, Gruppen, Spielzeit, portable Einstellungen, Start- und Fensterprofile, eigene Themes, Add-on-Dateien und fertige Aufnahmen werden verschlüsselt gespeichert.
 
-**Update:** Im Launcher unter **Einstellungen → Updates** den Kanal **stable** wählen und **Nach Updates suchen**. Wer bereits den Kanal **beta** nutzt, erhält ebenfalls 6.0.0. Danach **Herunterladen → Neustarten & anwenden**.
+1. Unter **Addons → Cloud-Synchronisierung** ein Cloud-Profil in einem synchronisierten Ordner erstellen, etwa in OneDrive, Dropbox oder Google Drive.
+2. Den Cloud-Schlüssel sicher aufbewahren und den Cloud-Dienst den Ordner übertragen lassen.
+3. Auf dem zweiten PC **Gerät verbinden** wählen und denselben Ordner mit dem Schlüssel öffnen.
 
-Die Windows-EXE und ihre SHA-256-Prüfsumme stehen unter Assets. Die EXE hat keine digitale Herausgebersignatur.
+Der Launcher gleicht bei entsperrtem Tresor automatisch ab. **Jetzt abgleichen** steht jederzeit zur Verfügung. Der Cloud-Dienst übernimmt die Übertragung. Spielinstallationen, FFmpeg und Aufnahmegeräte werden pro PC eingerichtet.
+
+Das Update verwendet das vorhandene lokale 6.0-Profil. Unter **Einstellungen → Updates** im Kanal **stable** nach Updates suchen, herunterladen und **Neustarten & anwenden** wählen.
+
+Windows-EXE, Testanleitung und SHA-256-Prüfsumme stehen unter Assets.

@@ -133,6 +133,7 @@ class Window(DesktopShell, QMainWindow):
         self.poll_pending = self.rpc_pending = False
         self.shutting_down = False
         self.updating = False
+        self.close_after_cloud = False
         self.found = []
         self.setWindowTitle("Wiz Q Launcher · " + __version__)
         self.setWindowIcon(app_icon())
@@ -200,6 +201,7 @@ class Window(DesktopShell, QMainWindow):
         self.maintenance.start()
         QApplication.instance().installEventFilter(self)
         QTimer.singleShot(200, self.poll)
+        self.addons_page.cloud.start()
 
     def apply_theme(self):
         themes = BUILTINS if self.safe_mode else catalog(self.paths.directory("themes"))
@@ -295,8 +297,8 @@ class Window(DesktopShell, QMainWindow):
         self.playtime_page.refresh()
 
     def ensure_unlocked(self):
-        if self.vault.key is None:
-            return unlock(self.vault, self)
+        if self.vault.key is None and not unlock(self.vault, self):
+            return False
         self.last_interaction = time.monotonic()
         return True
 
@@ -362,6 +364,9 @@ class Window(DesktopShell, QMainWindow):
         self.store.set("tutorial_seen", True)
 
     def launch_accounts(self, accounts, region=None, language=None):
+        if self.addons_page.cloud.busy or self.close_after_cloud:
+            self.notice("Nach dem Cloud-Abgleich kannst du neue Spielinstanzen starten.")
+            return
         if self.updating:
             self.notice("Ein Update wird vorbereitet. Neue Spielstarts sind bis zum Neustart pausiert.")
             return
@@ -401,7 +406,7 @@ class Window(DesktopShell, QMainWindow):
         self.poll()
 
     def poll(self):
-        if self.poll_pending or self.shutting_down:
+        if self.poll_pending or self.shutting_down or self.close_after_cloud:
             return
         self.poll_pending = True
 
@@ -539,6 +544,10 @@ class Window(DesktopShell, QMainWindow):
             self.addons_page.capture.save_clip()
 
     def request_restore(self, path):
+        if self.addons_page.cloud.busy or self.close_after_cloud:
+            self.notice("Nach dem Cloud-Abgleich kannst du die Sicherung wiederherstellen.")
+            return
+
         def request():
             check_database(path, full=True)
             if (
@@ -564,12 +573,18 @@ class Window(DesktopShell, QMainWindow):
         self.close()
 
     def closeEvent(self, event):
+        cloud = self.addons_page.cloud
         if not self.force_quit and self.tray and get(self.store, "close_to_tray"):
             self.hide()
             event.ignore()
         elif self.launch_tasks:
             self.notice("Startvorgänge laufen noch. Nach Abschluss erneut beenden.")
             self.force_quit = False
+            event.ignore()
+        elif cloud.busy or cloud.flush_on_exit():
+            self.close_after_cloud = True
+            self.notice("Der Launcher beendet sich nach dem Cloud-Abgleich …")
+            self.setEnabled(False)
             event.ignore()
         else:
             event.accept()

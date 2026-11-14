@@ -1,5 +1,5 @@
 # Wiz Q Launcher 6
-**Version 6.0.0 for Windows, rebuilt with PySide6.**
+**Version 6.0.1 for Windows, rebuilt with PySide6.**
 
 A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 3 desktop presets plus 20 themes, optional addons, Discord and a crash-resistant profile.
 
@@ -32,6 +32,7 @@ First start:
 - Discord RPC/yield-to-game and optional encrypted webhook.
 - Stat Monitor, Clips and Record (external FFmpeg), Theme Creator, Aero Explorer/Graphit Werkbank/Arkaner Explorer and all 20 earlier themes.
 - Trusted custom addon workers and example SDK.
+- Opt-in encrypted cloud sync for accounts, playtime, portable settings, themes, addons and recordings through a folder synced by OneDrive, Dropbox, Google Drive or a similar service. See **Addons → Cloud-Synchronisierung** and the in-app help.
 - Explicit GitHub asset selection, size/SHA256 verification, restart helper and rollback snapshots.
 
 **Limits:** Real game login, long recording sessions and global hotkeys need user/device validation. The Windows pipeline tests the packaged GUI and a real EXE exchange with data preservation. Imported region entries are not proof of current region/client compatibility. Steam is not yet a validated flow. The first beta UI is German; an imported English preference is retained for later translation. Updates currently rely on the HTTPS GitHub API asset digest; no separate publisher signature is configured. Custom code workers are not a security sandbox.

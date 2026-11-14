@@ -1,5 +1,5 @@
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QSpinBox, QStyleOptionViewItem
 
 from wizq.app import Window
@@ -88,6 +88,32 @@ def test_settings_and_addon_submenus_have_clickable_parents(desktop):
     assert window.location == Location()
     window.go(Location(4))
     assert not window.actions["forward"].isEnabled()
+
+
+def test_cloud_page_creates_a_profile_in_the_chosen_folder(desktop, tmp_path, monkeypatch):
+    window, app, *_ = desktop
+    page = window.addons_page.cloud
+    folder = tmp_path / "Synced folder"
+    folder.mkdir()
+    codes = []
+    loop = QEventLoop()
+    monkeypatch.setattr(page, "pick_folder", lambda: str(folder))
+    monkeypatch.setattr(page, "key_dialog", lambda code: (codes.append(code), loop.quit()))
+    window.go(Location(3, section="Cloud-Synchronisierung"))
+    assert window.addons_page.stack.currentWidget() is page
+    assert page.create_button.isEnabled()
+    page.create_button.click()
+    QTimer.singleShot(5000, loop, loop.quit)
+    loop.exec()
+    assert codes == [page.service.code()]
+    assert not page.busy
+    assert page.sync_button.isEnabled()
+    assert page.timer.isActive()
+    page.disconnect_button.click()
+    app.processEvents()
+    assert page.service.config() is None
+    assert page.create_button.isEnabled()
+    assert not page.timer.isActive()
 
 
 def test_hidden_accounts_are_remembered_but_never_launched(desktop, monkeypatch):

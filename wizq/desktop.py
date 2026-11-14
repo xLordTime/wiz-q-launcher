@@ -23,12 +23,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .addons import BUILTINS as ADDONS
 from .widgets import Button
 
 ROLE = Qt.ItemDataRole.UserRole
 PAGE_NAMES = ("Alle Accounts", "Accounts verwalten", "Spielzeit", "Addons", "Einstellungen", "Hilfe")
 PAGE_ICONS = ("accounts", "account", "clock", "addon", "settings", "help")
-ADDON_NAMES = ("Verwalten", "Stat Monitor", "Clips and Record", "Theme Creator")
+ADDON_NAMES = ("Verwalten", *(name for _, name, _ in ADDONS))
 
 
 @dataclass(frozen=True)

@@ -37,6 +37,7 @@ def asset(content):
 
 
 def test_asset_selection_skips_helper_exe(monkeypatch):
+    monkeypatch.setattr(updates, "__version__", "6.0.0")
     content = b"MZ-test"
     info = asset(content)
     release = {
@@ -52,7 +53,9 @@ def test_asset_selection_skips_helper_exe(monkeypatch):
         ],
     }
     monkeypatch.setattr(updates.requests, "get", lambda *a, **k: Response(data=release))
-    assert updates.check()["sha256"] == info["sha256"]
+    checked = updates.check()
+    assert checked is not None
+    assert {key: checked[key] for key in info} == info
 
 
 def test_hash_mismatch_leaves_no_executable(tmp_path, monkeypatch):

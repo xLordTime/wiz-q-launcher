@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v6.0.1
+
+- Encrypted cloud synchronization through a user-selected cloud folder, with a pairing key for each additional PC.
+- Synchronize accounts, groups, playtime, portable settings, saved profiles, custom themes, addon files and finished recordings. Merge offline edits and preserve local copies of replaced data.
+
 ## 6.0.0-beta.1 — complete PySide6 rebuild (development branch)
 
 - New Launch, Account Management, Playtime, Addons, Settings and offline Help pages.

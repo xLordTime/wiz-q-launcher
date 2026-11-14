@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 )
 
 from . import backend, updates
+from .cloud import META
+from .cloud_profile import CHECKPOINT
 from .settings import GAME_LANGUAGES, SETTINGS, get, set_value
 from .storage import Store
 from .themes import catalog
@@ -164,6 +166,26 @@ class SettingsPage(QWidget):
                 else:
                     control.setCurrentIndex(max(0, control.findData(value)))
 
+    def refresh_cloud_settings(self, changed, themes):
+        for key, control in self.controls.items():
+            if "settings/" + key not in changed and not (key == "theme" and themes):
+                continue
+            value = get(self.window.store, key)
+            with QSignalBlocker(control):
+                if key == "theme":
+                    control.clear()
+                    for theme in catalog(self.window.paths.directory("themes")):
+                        control.addItem(theme.name, theme.id)
+                    control.setCurrentIndex(max(0, control.findData(value)))
+                elif isinstance(control, QSpinBox):
+                    control.setValue(value)
+                elif isinstance(control, QCheckBox):
+                    control.setChecked(value)
+                elif isinstance(control, QLineEdit) and not (control.hasFocus() and control.isModified()):
+                    control.setText(value)
+                elif isinstance(control, Combo):
+                    control.setCurrentIndex(max(0, control.findData(value)))
+
     def pick_path(self, key, control):
         path = (
             QFileDialog.getOpenFileName(self, "FFmpeg auswählen", "", "Programm (*.exe)")[0]
@@ -282,6 +304,8 @@ class SettingsPage(QWidget):
                     vault = Vault(snapshot)
                     vault.key = key
                     vault.change_protection(password)
+                    with snapshot.transaction() as db:
+                        db.execute("DELETE FROM meta WHERE key IN (?,?)", (META, CHECKPOINT))
                 finally:
                     snapshot.close()
                 staged = Path(path).with_suffix(".part")
@@ -398,6 +422,9 @@ class SettingsPage(QWidget):
 
     def apply_update(self):
         if self.update_info and self.update_path:
+            if self.window.addons_page.cloud.busy or self.window.close_after_cloud:
+                self.window.notice("Nach dem Cloud-Abgleich kannst du das Update anwenden.")
+                return
             if self.window.launch_tasks:
                 self.window.notice(
                     "Zuerst die laufenden Spielstarts abschließen lassen, dann das Update anwenden."

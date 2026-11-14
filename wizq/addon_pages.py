@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from .addons import BUILTINS, AddonWorker, discover
 from .capture import Capture
+from .cloud_page import CloudPage
 from .themes import Backdrop, catalog, save_theme, stylesheet, validate_theme
 from .widgets import Button, Combo, label, panel, row
 
@@ -142,6 +143,7 @@ class CapturePage(QWidget):
         super().__init__()
         self.window = window
         self.capture = Capture(window.paths, window.store, self)
+        self.clip_tasks = 0
         layout = QVBoxLayout(self)
         layout.addWidget(label("Clips and Record", name="title"))
         layout.addWidget(
@@ -205,6 +207,9 @@ class CapturePage(QWidget):
         return value
 
     def start(self, replay):
+        if self.window.addons_page.cloud.busy:
+            self.window.notice("Nach dem Cloud-Abgleich kannst du die Aufnahme starten.")
+            return
         self.window.guard(lambda: self.capture.start(self.hwnd(), replay))
 
     def screenshot(self):
@@ -227,9 +232,14 @@ class CapturePage(QWidget):
     def save_clip(self):
         try:
             fn = self.capture.prepare_clip()
-            self.window.task(fn, lambda path: self.status.setText("Clip gespeichert: " + path))
+            self.clip_tasks += 1
+            task = self.window.task(fn, lambda path: self.status.setText("Clip gespeichert: " + path))
+            task.signals.done.connect(self.clip_finished)
         except Exception as exc:
             self.window.notice(str(exc))
+
+    def clip_finished(self):
+        self.clip_tasks -= 1
 
 
 def contrast(a, b):
@@ -448,11 +458,14 @@ class AddonsPage(QWidget):
         overview = QWidget()
         body = QVBoxLayout(overview)
         self.stats, self.capture, self.themes = StatsPage(window), CapturePage(window), ThemesPage(window)
+        self.cloud = CloudPage(window)
+        self.builtin_controls = {}
         self.stack.addWidget(overview)
         self.navigation.addItem("Verwalten")
         for ident, name, desc in BUILTINS:
             control = QCheckBox(name)
             control.setChecked(window.addon_enabled(ident))
+            self.builtin_controls[ident] = control
             control.setToolTip(desc)
             control.toggled.connect(lambda value, i=ident: self.toggle_builtin(i, value))
             body.addWidget(control)
@@ -463,11 +476,9 @@ class AddonsPage(QWidget):
                 muted=True,
             )
         )
-        self.custom_manifests = discover(window.paths.directory("addons")) if not window.safe_mode else []
-        for manifest in self.custom_manifests:
-            control = QCheckBox(str(manifest.get("name", manifest["id"])))
-            control.toggled.connect(lambda on, m=manifest, c=control: self.toggle_custom(m, on, c))
-            body.addWidget(control)
+        self.custom_controls = QVBoxLayout()
+        body.addLayout(self.custom_controls)
+        self.refresh_custom_controls()
         self.custom_status = label("Eigene Addons werden nicht automatisch gestartet.", muted=True)
         body.addWidget(self.custom_status)
         body.addWidget(
@@ -487,7 +498,7 @@ class AddonsPage(QWidget):
             )
         )
         body.addStretch()
-        for widget in (self.stats, self.capture, self.themes):
+        for widget in (self.stats, self.capture, self.themes, self.cloud):
             self.stack.addWidget(widget)
         self.navigation.currentRowChanged.connect(self.choose)
         split.addWidget(self.navigation)
@@ -505,6 +516,8 @@ class AddonsPage(QWidget):
 
     def toggle_builtin(self, ident, on):
         self.window.store.set("addon:" + ident, on)
+        if ident == "cloud-sync":
+            self.cloud.start() if on else self.cloud.stop()
         if not on:
             if ident == "stat-monitor":
                 self.stats.timer.stop()
@@ -513,12 +526,40 @@ class AddonsPage(QWidget):
             if self.stack.currentIndex() == [b[0] for b in BUILTINS].index(ident) + 1:
                 self.navigation.setCurrentRow(0)
 
+    def refresh_builtin_controls(self):
+        from PySide6.QtCore import QSignalBlocker
+
+        for ident, control in self.builtin_controls.items():
+            checked = self.window.addon_enabled(ident)
+            if checked != control.isChecked():
+                with QSignalBlocker(control):
+                    control.setChecked(checked)
+                if not checked and ident == "stat-monitor":
+                    self.stats.timer.stop()
+                if not checked and ident == "clips-record":
+                    self.capture.capture.shutdown()
+        self.choose(self.navigation.currentRow())
+
+    def refresh_custom_controls(self):
+        if self.workers or self.window.safe_mode:
+            return
+        while self.custom_controls.count():
+            self.custom_controls.takeAt(0).widget().deleteLater()
+        for manifest in discover(self.window.paths.directory("addons")):
+            control = QCheckBox(str(manifest.get("name", manifest["id"])))
+            control.toggled.connect(lambda on, m=manifest, c=control: self.toggle_custom(m, on, c))
+            self.custom_controls.addWidget(control)
+
     def toggle_custom(self, manifest, on, control):
         ident = manifest["id"]
         if not on:
             worker = self.workers.pop(ident, None)
             if worker:
                 worker.stop()
+            return
+        if self.cloud.busy:
+            control.setChecked(False)
+            self.window.notice("Nach dem Cloud-Abgleich kannst du das Add-on starten.")
             return
         if (
             QMessageBox.question(
@@ -540,6 +581,7 @@ class AddonsPage(QWidget):
             worker.send_event(name, data)
 
     def shutdown(self):
+        self.cloud.stop()
         self.stats.timer.stop()
         self.capture.capture.shutdown()
         for worker in self.workers.values():

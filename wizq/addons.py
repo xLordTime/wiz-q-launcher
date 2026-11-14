@@ -14,6 +14,7 @@ BUILTINS = [
     ("stat-monitor", "Stat Monitor", "CPU, RAM und verfügbare PC-Metriken"),
     ("clips-record", "Clips and Record", "Screenshots, Aufnahme und komprimierter Replay-Puffer"),
     ("theme-creator", "Theme Creator", "Eigene Designs mit Live-Vorschau"),
+    ("cloud-sync", "Cloud-Synchronisierung", "Verschlüsseltes Profil auf mehreren Geräten"),
 ]
 
 

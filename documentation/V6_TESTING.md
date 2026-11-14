@@ -1,17 +1,25 @@
-# Wiz Q Launcher 6.0.0 testen
+# Wiz Q Launcher 6.0.1 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
 ## Download und Start
 
-1. Auf GitHub unter **Actions → Version 6 Windows Build** den erfolgreichen Lauf für **Version-6.0** öffnen.
-2. Das Artefakt **WizQLauncher-6.0-Windows-Beta** herunterladen und die ZIP-Datei entpacken.
-3. Den bisherigen Launcher über **Beenden** vollständig schließen. Das X kann ihn lediglich in den Tray verschieben.
-4. **WizQLauncher-v6.0.0.exe** starten. Die Datei kann im Unterordner `release` der entpackten ZIP liegen.
-5. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
-6. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
+1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **stable** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
+2. Für den eigenständigen Start **WizQLauncher-v6.0.1.exe** aus dem [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.1) herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten.
+3. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
+4. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
 Das Profil liegt unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert die alten Quelldateien nicht. Ein Launcher-Profil kann jeweils nur von einer laufenden Launcher-Instanz geöffnet werden.
+
+## Cloud-Synchronisierung
+
+1. Auf PC A unter **Addons → Cloud-Synchronisierung** einen synchronisierten Ordner wählen und ein Cloud-Profil erstellen. Den Cloud-Schlüssel sicher aufbewahren.
+2. Den Unterordner **WizQ Cloud** auf beiden PCs offline verfügbar halten. Sobald dein Cloud-Dienst ihn übertragen hat, auf PC B **Gerät verbinden** wählen. Den übergeordneten Ordner und den Cloud-Schlüssel eingeben.
+3. Accounts, Gruppen, Spielzeit, Einstellungen und eigene Dateien prüfen. Spielspezifische Installationspfade und Aufnahmeeinstellungen für Geräte werden lokal eingerichtet.
+4. Auf PC A einen Account umbenennen und auf PC B ein Theme oder Startprofil speichern. Auf beiden Geräten **Jetzt abgleichen** wählen und den Cloud-Dienst übertragen lassen. Prüfen, ob beide Änderungen angekommen sind.
+5. Internet kurz trennen, eine Einstellung ändern und den Cloud-Dienst wieder verbinden. Bei entsperrtem Tresor wird der Abgleich automatisch fortgesetzt.
+
+Beim Verbinden werden vorhandene Daten ergänzt. Bei einer bereits im Cloud-Profil gespeicherten Einstellung gilt der Cloud-Wert. Ersetzte Daten werden lokal unter **backups/cloud** gesichert. Die App zeigt an, wenn Dateien noch ausstehen. Spielzeit wird übernommen und Spielstarts kannst du am zweiten PC mit demselben Account ausführen.
 
 ## Neue Bedienung
 
