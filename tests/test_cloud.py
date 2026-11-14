@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import pytest
 
 from wizq.cloud import CloudError, CloudSync, new_code
-from wizq.cloud_files import safe_file
+from wizq.cloud_files import CLOUD_DIRECTORY, CloudFiles, safe_file
 from wizq.paths import Paths
 from wizq.sessions import Sessions
 from wizq.storage import Store, restore_backup
@@ -212,19 +212,132 @@ def test_unavailable_folder_and_wrong_code_preserve_local_changes(linked_devices
     first, second, folder = linked_devices
     code = new_code()
     first.connect(folder, code, create=True)
-    with pytest.raises(CloudError, match="Profil fehlt"):
+    with pytest.raises(CloudError, match="Kein Profil für diesen Schlüssel"):
         second.connect(folder, new_code(), create=False)
     assert second.config() is None
     second.connect(folder, code, create=False)
     offline = folder.with_name("offline")
     folder.rename(offline)
     account = second.store.save_account(second.vault, "Offline", "user", "password", "us")
-    with pytest.raises(CloudError, match="nicht erreichbar"):
-        second.sync()
+    assert "nicht erreichbar" in second.sync().waiting
     offline.rename(folder)
     second.sync()
     first.sync()
     assert first.store.accounts()[0]["id"] == account
+
+
+@pytest.mark.parametrize("selected", ("provider", "cloud", "profile"))
+def test_pairing_is_saved_until_first_readable_packet_arrives(
+    linked_devices, tmp_path, selected, monkeypatch
+):
+    first, second, source = linked_devices
+    name = "Account from 6.0.1"
+    account = first.store.save_account(first.vault, name, "user", "password", "de")
+    code = new_code()
+    first.connect(source, code, create=True)
+    target = tmp_path / "PC 2 Provider"
+    target.mkdir()
+    cloud = CloudFiles(target, bytes.fromhex(code))
+    if selected != "provider":
+        cloud.root.mkdir(parents=True)
+    picked = {"provider": target, "cloud": target / CLOUD_DIRECTORY, "profile": cloud.root}[selected]
+    assert second.connect(picked, code, create=False).waiting
+    assert second.store.accounts() == []
+    assert second.config()["folder"] == str(target.resolve())
+    assert second.code() == code
+
+    transfer(source, target)
+    (packet,) = cloud.devices.glob("*.wq")
+    copy = packet.with_stem(packet.stem + " (conflicted copy)")
+    copy.touch()
+    data = packet.read_bytes()
+    packet.write_bytes(data[:19])
+    assert second.sync().waiting
+    assert not second.store.accounts()
+    packet.write_bytes(data)
+    original = CloudFiles.read_packet
+
+    def read(self, path, purpose):
+        if path == copy:
+            error = OSError("Synthetic on-demand file")
+            error.winerror = 362
+            raise error
+        return original(self, path, purpose)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(CloudFiles, "read_packet", read)
+        reopened = CloudSync(second.paths, second.store, second.vault)
+        result = reopened.sync()
+    assert result.accounts == 1
+    assert result.pending_packets == 1
+    assert not result.waiting
+    assert second.store.accounts()[0]["id"] == account
+    assert second.store.accounts()[0]["nickname"] == name
+
+
+def test_media_failure_does_not_block_profile_and_retries(linked_devices, monkeypatch):
+    first, second, folder = linked_devices
+    photo = save_file(first, "recordings/clip.mkv", b"synthetic clip")
+    ident = first.store.save_account(first.vault, "Synced", "user", "password", "de")
+    code = new_code()
+    with monkeypatch.context() as fault:
+
+        def put(*_):
+            assert list(folder.rglob("devices/*.wq")), "The profile must be published before media uploads"
+            raise PermissionError("Synthetic cloud file lock")
+
+        fault.setattr(CloudFiles, "put", put)
+        result = first.connect(folder, code, create=True)
+        assert result.accounts == 1 and result.prepared and result.pending == 1
+        second.connect(folder, code, create=False)
+        assert second.store.accounts()[0]["id"] == ident
+        assert not (second.paths.root / "recordings/clip.mkv").exists()
+    assert first.sync().uploaded == 1
+    assert second.sync().downloaded == 1
+    assert (second.paths.root / "recordings/clip.mkv").read_bytes() == photo.read_bytes()
+
+
+def test_profile_survives_blocked_write_and_folder_relocation(linked_devices, tmp_path, monkeypatch):
+    first, second, folder = linked_devices
+    first.store.set("font_size", 14)
+    code = new_code()
+
+    def write(*_):
+        raise PermissionError("Synthetic cloud profile lock")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(CloudFiles, "write_packet", write)
+        result = first.connect(folder, code, create=True)
+        assert first.config()
+        assert result.waiting and not result.prepared
+        assert second.connect(folder, code, create=False).waiting
+    assert first.sync().prepared
+    assert second.sync().prepared
+    assert second.store.get("font_size") == 14
+
+    moved = tmp_path / "moved cloud folder"
+    folder.rename(moved)
+    first.store.set("font_size", 16)
+    assert first.sync().waiting
+    assert first.relocate(moved / CLOUD_DIRECTORY).prepared
+    assert second.relocate(moved / CLOUD_DIRECTORY).changed == {"settings/font_size"}
+    assert second.store.get("font_size") == 16
+    assert second.code() == code
+
+
+def test_existing_profile_can_be_saved_to_a_new_cloud_folder(linked_devices, tmp_path):
+    first, second, folder = linked_devices
+    ident = first.store.save_account(first.vault, "Existing account", "user", "password", "de")
+    code = new_code()
+    first.connect(folder, code, create=True)
+    first.store.set("font_size", 15)
+    destination = tmp_path / "New OneDrive Folder"
+    destination.mkdir()
+    assert first.relocate(destination).prepared
+    assert first.code() == code
+    assert second.connect(destination, code, create=False).accounts == 1
+    assert second.store.accounts()[0]["id"] == ident
+    assert second.store.get("font_size") == 15
 
 
 def test_recovery_uses_the_baseline_from_the_restored_database(tmp_path):

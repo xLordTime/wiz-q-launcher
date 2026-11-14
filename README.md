@@ -1,5 +1,5 @@
 # Wiz Q Launcher 6
-**Version 6.0.1 for Windows, rebuilt with PySide6.**
+**Version 6.0.2 for Windows, rebuilt with PySide6.**
 
 A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 3 desktop presets plus 20 themes, optional addons, Discord and a crash-resistant profile.
 

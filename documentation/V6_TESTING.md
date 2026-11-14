@@ -1,11 +1,11 @@
-# Wiz Q Launcher 6.0.1 testen
+# Wiz Q Launcher 6.0.2 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
 ## Download und Start
 
 1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **stable** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
-2. Für den eigenständigen Start **WizQLauncher-v6.0.1.exe** aus dem [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.1) herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten.
+2. Für den eigenständigen Start **WizQLauncher-v6.0.2.exe** aus dem [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.2) herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten.
 3. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
 4. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
@@ -14,7 +14,7 @@ Das Profil liegt unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert
 ## Cloud-Synchronisierung
 
 1. Auf PC A unter **Addons → Cloud-Synchronisierung** einen synchronisierten Ordner wählen und ein Cloud-Profil erstellen. Den Cloud-Schlüssel sicher aufbewahren.
-2. Den Unterordner **WizQ Cloud** auf beiden PCs offline verfügbar halten. Sobald dein Cloud-Dienst ihn übertragen hat, auf PC B **Gerät verbinden** wählen. Den übergeordneten Ordner und den Cloud-Schlüssel eingeben.
+2. Auf PC B **Gerät verbinden** wählen. Den synchronisierten Ordner oder den Unterordner **WizQ Cloud** auswählen und den bisherigen Cloud-Schlüssel eingeben. Solange der erste Profilstand fehlt, zeigt die App einen Wartestatus und prüft bei entsperrtem Tresor automatisch erneut. **Jetzt abgleichen** stößt die Prüfung sofort an.
 3. Accounts, Gruppen, Spielzeit, Einstellungen und eigene Dateien prüfen. Spielspezifische Installationspfade und Aufnahmeeinstellungen für Geräte werden lokal eingerichtet.
 4. Auf PC A einen Account umbenennen und auf PC B ein Theme oder Startprofil speichern. Auf beiden Geräten **Jetzt abgleichen** wählen und den Cloud-Dienst übertragen lassen. Prüfen, ob beide Änderungen angekommen sind.
 5. Internet kurz trennen, eine Einstellung ändern und den Cloud-Dienst wieder verbinden. Bei entsperrtem Tresor wird der Abgleich automatisch fortgesetzt.

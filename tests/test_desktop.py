@@ -3,6 +3,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QSpinBox, QStyleOptionViewItem
 
 from wizq.app import Window
+from wizq.cloud import new_code
 from wizq.desktop import Location
 from wizq.selection import contrast, mix, selection_colors
 from wizq.themes import BUILTINS, DESKTOP_THEMES, catalog
@@ -114,6 +115,35 @@ def test_cloud_page_creates_a_profile_in_the_chosen_folder(desktop, tmp_path, mo
     assert page.service.config() is None
     assert page.create_button.isEnabled()
     assert not page.timer.isActive()
+
+
+def test_cloud_page_shows_waiting_pairing_and_allows_retry(desktop, tmp_path, monkeypatch):
+    window, app, *_ = desktop
+    page = window.addons_page.cloud
+    folder = tmp_path / "Cloud destination"
+    folder.mkdir()
+    code = new_code()
+    loop = QEventLoop()
+    complete = page.finished
+
+    def finished():
+        complete()
+        loop.quit()
+
+    monkeypatch.setattr(page, "finished", finished)
+    monkeypatch.setattr(page, "pick_folder", lambda: str(folder))
+    monkeypatch.setattr("wizq.cloud_page.QInputDialog.getText", lambda *args: (code, True))
+    window.go(Location(3, section="Cloud-Synchronisierung"))
+    page.join_button.click()
+    QTimer.singleShot(5000, loop, loop.quit)
+    loop.exec()
+    assert "Verknüpfung gespeichert" in page.status.text()
+    assert page.sync_button.isEnabled()
+    assert page.move_button.isEnabled()
+    assert page.timer.isActive()
+    page.disconnect_button.click()
+    app.processEvents()
+    assert page.join_button.isEnabled()
 
 
 def test_hidden_accounts_are_remembered_but_never_launched(desktop, monkeypatch):

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v6.0.2
+
+- Cloud pairing now waits for the first readable profile and resumes automatically. The folder picker accepts the parent folder, the WizQ Cloud folder and the encrypted profile folder.
+- Persist account data when media is pending or a cloud file is briefly locked. Show profile and file transfer status and allow the cloud folder to be changed while keeping the pairing key.
+
 ## v6.0.1
 
 - Encrypted cloud synchronization through a user-selected cloud folder, with a pairing key for each additional PC.

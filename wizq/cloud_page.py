@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from .cloud import CloudSync, new_code
+from .cloud_files import CLOUD_DIRECTORY
 from .widgets import Button, Task, label, row
 
 
@@ -53,6 +55,9 @@ class CloudPage(QWidget):
         self.code_button = Button("Cloud-Schlüssel anzeigen …", self.show_key)
         self.disconnect_button = Button("Dieses Gerät trennen", self.disconnect)
         layout.addLayout(row(self.sync_button, self.code_button, self.disconnect_button))
+        self.open_button = Button("Cloud-Ordner öffnen", self.open_folder)
+        self.move_button = Button("Ordner wechseln …", self.relocate)
+        layout.addLayout(row(self.open_button, self.move_button))
         self.automatic_box = QCheckBox("Automatisch abgleichen, solange der Tresor entsperrt ist")
         self.automatic_box.setChecked(window.store.get("cloud_automatic", True))
         self.automatic_box.toggled.connect(self.toggle_automatic)
@@ -74,26 +79,41 @@ class CloudPage(QWidget):
         self.folder.setText(str(config["folder"]) if connected else "Dieses Gerät ist lokal eingerichtet.")
         for button in (self.create_button, self.join_button):
             button.setEnabled(not self.busy and not connected)
-        for button in (self.sync_button, self.code_button, self.disconnect_button):
+        for button in (
+            self.sync_button,
+            self.code_button,
+            self.disconnect_button,
+            self.move_button,
+            self.open_button,
+        ):
             button.setEnabled(not self.busy and connected)
         self.automatic_box.setEnabled(not self.busy and connected)
         if self.busy:
             self.status.setText("Cloud-Profil wird abgeglichen …")
-        elif not connected:
-            self.status.setText("Cloud-Verknüpfung ist aus.")
+        elif connected and self.window.vault.key is None:
+            self.status.setText("Abgleich pausiert, bis du den Tresor entsperrst.")
         elif self.failure:
             self.status.setText(self.failure)
-        elif self.window.vault.key is None:
-            self.status.setText("Abgleich pausiert, bis du den Tresor entsperrst.")
+        elif not connected:
+            self.status.setText("Cloud-Verknüpfung ist aus.")
         elif self.last_success is not None:
             stamp, result = self.last_success
             message = (
-                f"Letzter Abgleich {stamp} · {result.devices} Gerät(e) · "
-                f"{result.uploaded} Dateien bereitgestellt · {result.downloaded} Dateien geladen"
+                f"Abgleich {stamp} · {result.accounts} Accounts im Profilstand · {result.devices} Gerät(e)"
             )
+            if result.prepared:
+                message += "\nProfil in den Cloud-Ordner geschrieben. Den Upload übernimmt dein Cloud-Dienst."
+            if result.uploaded or result.downloaded:
+                message += f"\n{result.uploaded} Dateien bereitgestellt · {result.downloaded} Dateien geladen"
             if result.pending:
                 message += f" · {result.pending} Dateien ausstehend"
+            if result.pending_packets:
+                message += f"\n{result.pending_packets} Profilstände sind noch nicht lesbar."
             self.status.setText(message)
+        elif config.get("setup") == "join":
+            self.status.setText("Verknüpfung gespeichert. Warte auf den ersten Profilstand.")
+        elif config.get("setup") == "create":
+            self.status.setText("Verknüpfung gespeichert. Das Profil wird für die Cloud vorbereitet.")
         else:
             self.status.setText("Verbunden. Der Cloud-Dienst überträgt den verschlüsselten Ordner.")
 
@@ -126,9 +146,29 @@ class CloudPage(QWidget):
             self.refresh()
 
     def pick_folder(self):
+        config = self.service.config()
+        initial = Path(config["folder"]) if config else Path.home()
         return QFileDialog.getExistingDirectory(
-            self, "Synchronisierten Cloud-Ordner wählen", str(Path.home())
+            self, "Synchronisierten Cloud-Ordner wählen", str(initial if initial.is_dir() else Path.home())
         )
+
+    def open_folder(self):
+        def open_profile():
+            folder = Path(self.service.config()["folder"])
+            if (folder / CLOUD_DIRECTORY).is_dir():
+                folder /= CLOUD_DIRECTORY
+            if not folder.is_dir() or not QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder))):
+                raise RuntimeError(
+                    "Cloud-Ordner gerade nicht erreichbar. Wähle bei Bedarf seinen neuen Speicherort."
+                )
+
+        self.window.guard(open_profile)
+
+    def relocate(self):
+        if self.enabled() and self.window.ensure_unlocked():
+            folder = self.pick_folder()
+            if folder:
+                self.run(lambda: self.service.relocate(folder), manual=True)
 
     def create(self):
         if not self.enabled() or not self.window.ensure_unlocked():
@@ -172,7 +212,12 @@ class CloudPage(QWidget):
         text.setReadOnly(True)
         text.setAccessibleName("Cloud-Schlüssel")
         layout.addWidget(text)
-        layout.addWidget(Button("Schließen", dialog.accept))
+
+        def copy_key():
+            text.selectAll()
+            text.copy()
+
+        layout.addLayout(row(Button("Schlüssel kopieren", copy_key), Button("Schließen", dialog.accept)))
         text.selectAll()
         dialog.exec()
         text.clear()
@@ -226,7 +271,12 @@ class CloudPage(QWidget):
             QTimer.singleShot(0, self.window.quit_app)
 
     def completed(self, result, after):
-        self.last_success = time.strftime("%H:%M:%S"), result
+        if result.waiting:
+            self.failure = result.waiting
+            if (self.service.config() or {}).get("setup") == "join":
+                self.failure = "Verknüpfung gespeichert. " + self.failure
+        else:
+            self.last_success = time.strftime("%H:%M:%S"), result
         if not self.timer.isActive() and not self.exit_flushed:
             self.start()
         window = self.window

@@ -8,6 +8,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
@@ -18,6 +19,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 CHUNK = 1024 * 1024
 PACKET_LIMIT = 64 * CHUNK
 FILE_ROOTS = ("themes", "addons", "recordings")
+CLOUD_DIRECTORY = "WizQ Cloud"
 HEX = re.compile(r"[a-f0-9]+\Z")
 INVALID_NAME = re.compile(r'[<>:"\\|?*\x00-\x1f]')
 RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
@@ -26,6 +28,10 @@ RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
 
 
 class CloudError(RuntimeError):
+    pass
+
+
+class CloudPending(CloudError):
     pass
 
 
@@ -48,7 +54,16 @@ def atomic_output(path):
             yield file
             file.flush()
             os.fsync(file.fileno())
-        os.replace(temporary, path)
+        for delay in (0, 0.1, 0.25, 0.5):
+            if delay:
+                time.sleep(delay)
+            try:
+                os.replace(temporary, path)
+                break
+            except OSError as exc:
+                # A provider or scanner can briefly hold the old file open on Windows.
+                if getattr(exc, "winerror", None) not in (5, 32, 33, 391, 397) or delay == 0.5:
+                    raise
     finally:
         Path(temporary).unlink(missing_ok=True)
 
@@ -88,7 +103,7 @@ class CloudFiles:
     """The cloud service receives ciphertext, random device names and keyed object IDs."""
 
     def __init__(self, folder, secret):
-        self.root = folder / "WizQ Cloud" / hmac.digest(secret, b"profile/v1", "sha256").hex()[:32]
+        self.root = folder / CLOUD_DIRECTORY / self.profile_id(secret)
         self.packet_key = AESGCM(hmac.digest(secret, b"packets/v1", "sha256"))
         self.object_key = hmac.digest(secret, b"objects/v1", "sha256")
         self.name_key = hmac.digest(secret, b"names/v1", "sha256")
@@ -96,6 +111,10 @@ class CloudFiles:
         self.objects = self.root / "objects"
         if any(linked(path) for path in (self.root.parent, self.root, self.devices, self.objects)):
             raise CloudError("Der Cloud-Profilordner verweist über einen Link auf einen anderen Ordner.")
+
+    @staticmethod
+    def profile_id(secret):
+        return hmac.digest(secret, b"profile/v1", "sha256").hex()[:32]
 
     def read_packet(self, path, purpose):
         with path.open("rb") as handle:
@@ -127,6 +146,13 @@ class CloudFiles:
             raise CloudError("Ungültige Dateiprüfsumme im Cloud-Profil.")
         ident = hmac.digest(self.name_key, bytes.fromhex(sha256), "sha256").hex()
         return self.objects / (ident + ".wqo")
+
+    def has_object(self, descriptor):
+        path = self.object_path(descriptor["sha256"])
+        try:
+            return not linked(path) and path.stat().st_size == descriptor["size"] + 28
+        except FileNotFoundError:
+            return False
 
     def put(self, path, descriptor):
         target = self.object_path(descriptor["sha256"])
