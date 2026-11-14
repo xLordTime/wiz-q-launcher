@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v6.0.3
+
+- Wizard101 accounts created through Steam can open the official Steam launcher from the account list. The File menu also offers a Steam launch without a saved account.
+- Show guidance when a direct launch points to a Steam library installation.
+
 ## v6.0.2
 
 - Cloud pairing now waits for the first readable profile and resumes automatically. The folder picker accepts the parent folder, the WizQ Cloud folder and the encrypted profile folder.

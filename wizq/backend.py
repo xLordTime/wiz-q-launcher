@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import os
 import subprocess
 import sys
 import time
@@ -14,6 +15,7 @@ import psutil
 from .settings import GAME_LANGUAGES, REGIONS, game_language, get
 
 PROCESS_NAME = "wizardgraphicalclient.exe"
+STEAM_URI = "steam://run/799960"
 
 # Only these fixed codes cross the worker boundary. Native exception strings
 # can contain arbitrary text and are never displayed, persisted or forwarded.
@@ -141,11 +143,35 @@ def detect_installs():
     return found
 
 
+def open_steam():
+    if sys.platform != "win32":
+        raise RuntimeError("Der Steam-Start ist nur unter Windows möglich.")
+    try:
+        os.startfile(STEAM_URI)
+    except OSError:
+        raise RuntimeError(
+            "Steam konnte nicht geöffnet werden. Öffne Wizard101 direkt in deiner Steam-Bibliothek."
+        ) from None
+
+
+def is_steam_install(path):
+    names = [part.casefold() for part in path.absolute().parts]
+    return ("steamapps", "common") in zip(names, names[1:])
+
+
 def launch(store, vault, region, account=None, language=None):
     if sys.platform != "win32":
         raise RuntimeError("Der Spielstart ist nur unter Windows möglich.")
+    if account and account.get("steam"):
+        open_steam()
+        return None
     language = game_language(store, region, language)
     path = Path(get(store, "region_install_" + region))
+    if is_steam_install(path):
+        raise ValueError(
+            "Dieser Spielordner liegt in einer Steam-Bibliothek. Wähle für diesen Account die Startmethode Über Steam "
+            "oder unter Launcher & Regionen den Spielordner der eigenständigen Installation."
+        )
     exe = path / "Bin/WizardGraphicalClient.exe"
     if not exe.is_file():
         raise ValueError(

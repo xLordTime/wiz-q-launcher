@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 SCHEMA = 1
+STEAM_ACCOUNT_PREFIX = "steam_account:"
 
 
 class ProfileError(RuntimeError):
@@ -95,21 +96,39 @@ class Store:
 
     def accounts(self):
         return self.query(
-            "SELECT a.id,a.nickname,a.region,a.group_id,a.position,a.favorite,a.legacy_seconds,a.legacy_sessions,a.last_used, COALESCE(SUM(s.elapsed),0)+a.legacy_seconds AS total_seconds,COUNT(s.id)+a.legacy_sessions AS session_count FROM accounts a LEFT JOIN sessions s ON s.account_id=a.id GROUP BY a.id ORDER BY a.position,a.nickname"
+            "SELECT a.id,a.nickname,a.region,a.group_id,a.position,a.favorite,a.legacy_seconds,a.legacy_sessions,a.last_used,"
+            " COALESCE(SUM(s.elapsed),0)+a.legacy_seconds AS total_seconds,COUNT(s.id)+a.legacy_sessions AS session_count,"
+            " COALESCE(setting.value='true',0) AS steam FROM accounts a LEFT JOIN sessions s ON s.account_id=a.id"
+            " LEFT JOIN settings setting ON setting.key=?||a.id GROUP BY a.id ORDER BY a.position,a.nickname",
+            (STEAM_ACCOUNT_PREFIX,),
         )
 
-    def save_account(self, vault, nickname, username, password, region, group_id=None, account_id=None):
-        if not nickname.strip() or not username.strip() or not password:
-            raise ValueError("Nickname, Username und Passwort sind erforderlich.")
+    def save_account(
+        self, vault, nickname, username, password, region, group_id=None, account_id=None, *, steam=None
+    ):
+        if not nickname.strip():
+            raise ValueError("Ein Nickname ist erforderlich.")
         account_id = account_id or str(uuid.uuid4())
-        secret = vault.encrypt({"username": username, "password": password}, account_id)
+        key = STEAM_ACCOUNT_PREFIX + account_id
         with self.transaction() as db:
+            previous_mode = self.get(key, False)
+            mode = previous_mode if steam is None else bool(steam)
+            if not mode and (not username.strip() or not password):
+                raise ValueError("Für den Direktstart sind Username und Passwort erforderlich.")
+            secret = vault.encrypt({"username": username, "password": password}, account_id)
             position = db.execute("SELECT COALESCE(MAX(position),-1)+1 FROM accounts").fetchone()[0]
             db.execute(
                 "INSERT INTO accounts(id,nickname,region,credentials,group_id,position) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname,region=excluded.region,credentials=excluded.credentials,group_id=excluded.group_id",
                 (account_id, nickname.strip(), region, secret, group_id, position),
             )
+            if mode != previous_mode:
+                self.set(key, mode)
         return account_id
+
+    def delete_account(self, account_id):
+        with self.transaction() as db:
+            db.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+            db.execute("DELETE FROM settings WHERE key=?", (STEAM_ACCOUNT_PREFIX + account_id,))
 
     def credentials(self, vault, account_id):
         rows = self.query("SELECT credentials FROM accounts WHERE id=?", (account_id,))

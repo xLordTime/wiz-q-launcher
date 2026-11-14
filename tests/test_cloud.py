@@ -174,6 +174,24 @@ def test_offline_edits_merge_and_deletions_survive_old_device_packets(linked_dev
     assert list((second.paths.root / "backups" / "cloud").glob("*.sqlite3"))
 
 
+def test_steam_launch_method_survives_cloud_copy_and_account_deletion(linked_devices):
+    first, second, folder = linked_devices
+    ident = first.store.save_account(first.vault, "Steam Wizard", "", "", "de", steam=True)
+    code = new_code()
+    first.connect(folder, code, create=True)
+    second.connect(folder, code, create=False)
+    (account,) = second.store.accounts()
+    assert account["id"] == ident and account["steam"]
+    with pytest.raises(ValueError, match="Direktstart"):
+        second.store.save_account(second.vault, "Steam Wizard", "", "", "de", account_id=ident, steam=False)
+    assert second.store.accounts()[0]["steam"]
+    second.store.delete_account(ident)
+    second.sync()
+    first.sync()
+    assert first.store.accounts() == []
+    assert not first.store.query("SELECT key FROM settings WHERE key LIKE 'steam_account:%'")
+
+
 def test_profile_arrives_before_files_and_authentication_preserves_existing_file(linked_devices):
     first, second, folder = linked_devices
     account = first.store.save_account(first.vault, "Account", "user", "password", "de")

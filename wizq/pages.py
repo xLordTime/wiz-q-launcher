@@ -50,11 +50,14 @@ class AccountDialog(QDialog):
         self.setWindowTitle("Account bearbeiten" if account else "Account hinzufügen")
         self.setMinimumWidth(480)
         layout = QVBoxLayout(self)
-        layout.addWidget(label("Deine Zugangsdaten bleiben verschlüsselt auf diesem PC.", muted=True))
         form = QFormLayout()
         self.nick, self.user, self.password = QLineEdit(), QLineEdit(), QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.region, self.group = Combo(), Combo()
+        self.steam = Combo()
+        self.steam.addItem("Direkt (Wiz Q)", False)
+        self.steam.addItem("Über Steam", True)
+        self.steam.setAccessibleName("Startmethode")
         for code, name in REGIONS.items():
             self.region.addItem(f"{code.upper()} · {name}", code)
         self.group.addItem("Ohne Gruppe", None)
@@ -63,6 +66,7 @@ class AccountDialog(QDialog):
         self.region.setCurrentIndex(self.region.findData(get(window.store, "current_region")))
         for title, control in (
             ("Nickname", self.nick),
+            ("Startmethode", self.steam),
             ("Username", self.user),
             ("Passwort", self.password),
             ("Region", self.region),
@@ -70,19 +74,23 @@ class AccountDialog(QDialog):
         ):
             form.addRow(title, control)
         layout.addLayout(form)
-        visible = QCheckBox("Passwort kurz anzeigen")
-        visible.toggled.connect(
+        self.visible_password = QCheckBox("Passwort kurz anzeigen")
+        self.visible_password.toggled.connect(
             lambda on: self.password.setEchoMode(
                 QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password
             )
         )
-        layout.addWidget(visible)
+        layout.addWidget(self.visible_password)
         from PySide6.QtCore import QTimer
 
         self.hide_timer = QTimer(self)
         self.hide_timer.setSingleShot(True)
-        self.hide_timer.timeout.connect(lambda: visible.setChecked(False))
-        visible.toggled.connect(lambda on: self.hide_timer.start(10000) if on else self.hide_timer.stop())
+        self.hide_timer.timeout.connect(lambda: self.visible_password.setChecked(False))
+        self.visible_password.toggled.connect(
+            lambda on: self.hide_timer.start(10000) if on else self.hide_timer.stop()
+        )
+        self.login_help = label("", muted=True)
+        layout.addWidget(self.login_help)
         self.error = label("", muted=True)
         layout.addWidget(self.error)
         layout.addLayout(
@@ -95,7 +103,26 @@ class AccountDialog(QDialog):
             self.password.setText(credentials["password"])
             self.region.setCurrentIndex(self.region.findData(account["region"]))
             self.group.setCurrentIndex(max(0, self.group.findData(account["group_id"])))
-            layout.addWidget(Button("Fenster-Startvorgabe bearbeiten …", lambda: window.open_window_editor(account=account)))
+            self.steam.setCurrentIndex(int(bool(account.get("steam"))))
+            layout.addWidget(
+                Button(
+                    "Fenster-Startvorgabe bearbeiten …", lambda: window.open_window_editor(account=account)
+                )
+            )
+        self.steam.currentIndexChanged.connect(self.update_login_method)
+        self.update_login_method()
+
+    def update_login_method(self):
+        steam = self.steam.currentData()
+        for widget in (self.user, self.password, self.visible_password):
+            widget.setEnabled(not steam)
+        if steam:
+            self.visible_password.setChecked(False)
+        self.login_help.setText(
+            "Steam öffnet den offiziellen Launcher. Melde dich dort beim passenden Spielserver an. Zugangsdaten sind hier optional."
+            if steam
+            else "Wiz Q speichert deine Zugangsdaten verschlüsselt und gibt sie beim Direktstart ein."
+        )
 
     def save(self):
         try:
@@ -107,6 +134,7 @@ class AccountDialog(QDialog):
                 self.region.currentData(),
                 self.group.currentData(),
                 self.account["id"] if self.account else None,
+                steam=self.steam.currentData(),
             )
             self.password.clear()
             self.accept()
@@ -252,9 +280,9 @@ class AccountsPage(QWidget):
                 )
                 == QMessageBox.StandardButton.Yes
             ):
-                with self.window.store.transaction() as db:
+                with self.window.store.transaction():
                     for a in selected:
-                        db.execute("DELETE FROM accounts WHERE id=?", (a["id"],))
+                        self.window.store.delete_account(a["id"])
         else:
             item = self.tree.currentItem()
             ident = item.data(0, ROLE) if item else None
@@ -364,7 +392,8 @@ ARTICLES = {
     "Navigation & Pfadleiste": "# Explorer-Navigation\n\nDie Pfadleiste ist interaktiv: **Mein Launcher** öffnet alle Accounts und hebt Such-/Regionsfilter auf. Jeder weitere Pfadteil öffnet seinen Bereich. Der kleine Pfeil am Pfadteil zeigt ein Menü mit Bereichen, Gruppen oder Unterseiten. Baumansicht und Pfadleiste bleiben synchron.\n\n**Beispiel:** Mein Launcher → Alle Accounts → Entdecker-Team. Ein Klick auf Alle Accounts zeigt wieder alle Gruppen. Gruppen werden anhand ihrer IDs gefiltert, auch wenn sie Accounts aus mehreren Regionen enthalten.\n\n**Zurück/Vorwärts:** Alt+Links / Alt+Rechts. **Eine Ebene höher:** Alt+Oben. **Startansicht:** Alt+Pos1. Ein Rechtsklick auf die Pfadleiste kopiert den sichtbaren Pfad.\n\nEine markierte Zeile zeigt die Accountdetails. Haken, fette Schrift und **Ausgewählt** in der Spalte **Startauswahl** bestätigen die Accounts für den Start. Der Startknopf nennt ihre Anzahl. Angekreuzte Accounts bleiben beim Filtern gemerkt. **Gestartet werden nur sichtbare, angekreuzte Accounts.** F5 startet diese Auswahl. Strg+N legt einen Account an, Strg+Umschalt+N öffnet Quicklaunch und Strg+S erstellt eine Sicherung.\n\nUnter Einstellungen → Darstellung stehen Aero Explorer, Graphit Werkbank, Arkaner Explorer sowie die bisherigen 20 Themes bereit. Fensteraufteilungen lassen sich an den Trennleisten ziehen und werden beim Beenden gespeichert.",
     "Schnellstart": "# Willkommen bei Wiz Q Launcher 6\n\n1. Unter **Einstellungen → Launcher & Regionen** den Spielordner je Region auswählen.\n2. Im **Account Management** einen Nickname, Username, Passwort und die passende Region speichern.\n3. Unter **Launch** die Accounts ankreuzen und **Auswahl starten** wählen.\n\nEine **leere Instanz** startet ohne gespeicherte Zugangsdaten. Nach Spielupdates kann Autologin vorübergehend nicht verfügbar sein. In diesem Fall bleibt die manuelle Anmeldung möglich.",
     "Accounts & Gruppen": "# Accounts und Gruppen\n\nDer Nickname ist dein frei änderbarer Anzeigename; der Username wird für die Anmeldung benötigt. Passwörter werden nicht gekürzt oder getrimmt. Gruppen organisieren Accounts, ohne Zugangsdaten zu duplizieren.\n\n**Beispiel:** Eine Gruppe ‚DE-Team‘ und eine Gruppe ‚US‘. Ziehe einen Account auf einen Gruppennamen oder innerhalb einer Gruppe an seine gewünschte Position. Sterne markieren Favoriten. Ein Startprofil speichert die Auswahl anhand stabiler Account-IDs.",
-    "Regionen & Autologin": "# Regionen und Autologin\n\nDE und US können unterschiedliche Installationsordner verwenden. Der Launcher wechselt bei einem fehlenden Regionspfad niemals still zur anderen Installation.\n\n**Spielordner** bedeutet der Ordner, der **Bin/WizardGraphicalClient.exe** enthält. Die Serverprofile wurden aus 5.x übernommen; ihre aktuelle Verfügbarkeit und Autologin müssen pro Region geprüft werden.\n\n**Spielsprache:** Unter Einstellungen → Launcher & Regionen wird die Sprache pro Serverprofil gewählt. Die Auswahl über der Accountliste bzw. im Quicklaunch-Dialog überschreibt sie nur für diesen Start. English (US) startet ohne -A; Deutsch mit -A de. Beispiel DE: -L login-de.eu.wizard101.com 12000 für Englisch, zusätzlich -A de für Deutsch. Der Server und deine Accountregion ändern sich dadurch nicht. Die Installation muss die Sprachdateien enthalten.\n\n**Autologin:** Der Launcher gibt die Zugangsdaten im Fenster der gestarteten Instanz ein. Erhöhe die Initialisierungswartezeit, wenn der Anmeldebildschirm später erscheint. Bei input_failed prüfe auch, ob Spiel und Launcher mit denselben Windows-Berechtigungen laufen. Fehlercodes enthalten keine Zugangsdaten. Eine unterbrochene Eingabe wird nicht wiederholt.\n\nOb die Serveranmeldung erfolgreich war, siehst du im Spielfenster. Der Start über Steam ist in dieser Beta noch nicht geprüft.",
+    "Steam-Accounts": "# Wizard101 über Steam starten\n\nÖffne die Eigenschaften deines über Steam erstellten Accounts und stelle **Startmethode → Über Steam** ein. Speichere und starte den Account über die Startauswahl. Alternativ öffnet **Datei → Wizard101 über Steam starten** die Steam-Version sofort.\n\nMelde dich im offiziellen Launcher an und wähle denselben Spielserver wie bei der Account-Erstellung. Die Server- und Sprachparameter in Wiz Q gelten für den Direktstart. Das Launchermenü von Steam übernimmt den Spielstart und die Anmeldung.\n\nEinen über Steam gestarteten Client kannst du unter **Laufende Instanzen → Account zuordnen** für die Spielzeiterfassung zuordnen. Bei einer Fehlermeldung direkt aus der Steam-Bibliothek starten und den genauen Fehlercode prüfen. [Wizard101 Steam-FAQ](https://steamcommunity.com/app/799960/discussions/0/1732086554919176948/).",
+    "Regionen & Autologin": "# Regionen und Autologin\n\nDE und US können unterschiedliche Installationsordner verwenden. Der Launcher wechselt bei einem fehlenden Regionspfad niemals still zur anderen Installation.\n\n**Spielordner** bedeutet der Ordner, der **Bin/WizardGraphicalClient.exe** enthält. Die Serverprofile wurden aus 5.x übernommen; ihre aktuelle Verfügbarkeit und Autologin müssen pro Region geprüft werden.\n\n**Spielsprache:** Unter Einstellungen → Launcher & Regionen wird die Sprache pro Serverprofil gewählt. Die Auswahl über der Accountliste bzw. im Quicklaunch-Dialog überschreibt sie nur für diesen Start. English (US) startet ohne -A; Deutsch mit -A de. Beispiel DE: -L login-de.eu.wizard101.com 12000 für Englisch, zusätzlich -A de für Deutsch. Der Server und deine Accountregion ändern sich dadurch nicht. Die Installation muss die Sprachdateien enthalten.\n\n**Autologin:** Der Launcher gibt die Zugangsdaten im Fenster der gestarteten Instanz ein. Erhöhe die Initialisierungswartezeit, wenn der Anmeldebildschirm später erscheint. Bei input_failed prüfe auch, ob Spiel und Launcher mit denselben Windows-Berechtigungen laufen. Fehlercodes enthalten keine Zugangsdaten. Eine unterbrochene Eingabe wird nicht wiederholt.\n\nOb die Serveranmeldung erfolgreich war, siehst du im Spielfenster.",
     "Spielfenster anordnen": "# Fenster anordnen und eigene Größen\n\nUnter **Launch → Laufende Instanzen → Anordnen …**, **Extras → Spielfenster anordnen** oder **Einstellungen → Fenster & Shortcuts** öffnest du die Monitorvorschau. Die Haken wählen die betroffenen Clients; per Drag & Drop bestimmst du die Reihenfolge. Der erste Client ist das Hauptfenster. Eine Vorschau verändert keine Spielfenster. Erst **Anwenden** führt die Anordnung aus.\n\n**Layouts:** Automatisches Raster, 2×2, eigenes Raster mit Spalten/Zeilen, nebeneinander, untereinander, Hauptfenster links/rechts/oben, Kaskade und Monitor füllen. Der Hauptfensteranteil ist einstellbar. Alle Monitore verteilt Clients gleichmäßig; Taskleiste freilassen verwendet die Arbeitsfläche je Monitor. Abstände und Ränder werden in physischen Pixeln berechnet.\n\n**Eigene Fenster:** In der Vorschau ziehen und unten rechts skalieren oder X/Y/Breite/Höhe eingeben. Negative Koordinaten sind für Monitore links/oberhalb normal. Außenmaß enthält den Rahmen; Spielbereich bezeichnet die Fläche ohne Rahmen. Die Größenvorgaben umfassen unter anderem 960×540, 1280×720, 1920×1080, 2560×1440 und Ultrawide. Zentrieren und rahmenloses Füllen sind direkt verfügbar.\n\n**Rahmen und Vordergrund:** Vorhandenen Rahmen beibehalten, skalierbarer Fensterrahmen oder rahmenlos. Immer im Vordergrund ist unabhängig wählbar. Rahmenlose Fenster bearbeitest du über die Vorschau. Per Rechtsklick auf eine laufende Instanz kannst du außerdem minimieren, maximieren, wiederherstellen und den Rahmen wechseln.\n\n**Merken:** Fensterprofile speichern mehrere Fenster anhand der Account-IDs. Nicht verfügbare Accounts werden beim Laden ausgelassen. Account-Startvorgaben gelten beim nächsten Spielstart, auch wenn du sie vor dem Start über den Fenster-Button eines Accounts erstellst. Startvorgaben lassen sich getrennt entfernen. Bestehende Positionen werden übernommen; nach Entfernen eines Monitors werden unzugängliche Fenster zurückgeholt.\n\n**Wiederherstellen:** Letzte Änderung rückgängig oder Originalzustand wiederherstellen. Der Zustand wird vor der Änderung im lokalen Profil gesichert und bleibt nach einem Launcher-Neustart verfügbar, solange derselbe Spielprozess lebt. Wiederverwendete IDs und geschlossene Clients werden nicht verändert.\n\n**Spielgrafik:** Wizard101 im Fenstermodus verwenden. Die Maße steuern das Windows-Fenster; interne Grafikauflösung und Spielkamera stellst du im Spiel ein. Falls das Bild gestreckt wirkt oder Klicks versetzt reagieren, eine passende Spielauflösung wählen. Ein festes Raster-Seitenverhältnis bezieht sich auf die Außenmaße. Exklusives Vollbild oder ein weiteres Fensterwerkzeug kann Position und Rahmen erneut ändern.",
     "Spielzeit": "# Spielzeit verstehen\n\nGemessen wird die **Client-Laufzeit**, keine AFK- oder Charakterspielzeit. Zwei gleichzeitig laufende Accounts ergeben zwei Accountstunden pro realer Stunde. Die 24h-Aktivität vereint Überschneidungen.\n\nHistorische Summen werden genau einmal importiert. Eine nachträgliche Tageshistorie lässt sich daraus nicht rekonstruieren. Neue Tageswerte beziehen sich auf den Sitzungstag.\n\nAlle zehn Sekunden wird ein Zwischenstand gespeichert. Nach einem Absturz wird bis zum letzten gespeicherten Stand gezählt; die Zeit bis zum nächsten PC-Start zählt nicht. Lange Suspend-/Zeitlücken werden nicht pauschal gutgeschrieben. Nicht zugeordnete externe Clients kannst du im Launch-Tab einem Account zuweisen.",
     "Sicherheit & Sicherungen": "# Sicherheit und Wiederherstellung\n\nPasswörter und Webhook-URLs sind authentifiziert verschlüsselt. Ohne Masterpasswort schützt Windows den Profilschlüssel für dein Benutzerkonto. Für einen PC-Wechsel kannst du die Cloud-Synchronisierung oder einen passwortgeschützten Export nutzen. Ein vergessenes echtes Masterpasswort kann der Launcher nicht umgehen.\n\nEinstellungen werden in SQLite mit WAL und FULL-Synchronisation geschrieben. Regelmäßige Sicherungen werden vor Aktivierung geprüft. Eine lokale Kopie schützt nicht vor dem Verlust der ganzen Festplatte.\n\nBei beschädigter Datenbank bietet der Startdialog eine geprüfte Sicherung an. Die Originaldateien bleiben im Recovery-Ordner erhalten. Normale Sicherungen bewahren auch den bisherigen Schutzmodus. Der Export mit Transportpasswort lässt sich auf einem anderen PC öffnen.",

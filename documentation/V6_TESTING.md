@@ -1,15 +1,23 @@
-# Wiz Q Launcher 6.0.2 testen
+# Wiz Q Launcher 6.0.3 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
 ## Download und Start
 
 1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **stable** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
-2. Für den eigenständigen Start **WizQLauncher-v6.0.2.exe** aus dem [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.2) herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten.
+2. Für den eigenständigen Start **WizQLauncher-v6.0.3.exe** aus dem [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.3) herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten.
 3. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
 4. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
 Das Profil liegt unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert die alten Quelldateien nicht. Ein Launcher-Profil kann jeweils nur von einer laufenden Launcher-Instanz geöffnet werden.
+
+## Steam-Account testen
+
+1. Einen bestehenden Steam-Account in der Liste bearbeiten oder einen Eintrag mit Nickname anlegen. **Startmethode → Über Steam** wählen und speichern.
+2. Den Account auswählen und starten. Steam muss den offiziellen Wizard101-Launcher öffnen. Dort den Server aus der Account-Erstellung auswählen und anmelden.
+3. Über **Datei → Wizard101 über Steam starten** lässt sich der Start ohne Account-Eintrag prüfen. Nach dem Start kann ein sichtbarer Spielclient unter **Laufende Instanzen → Account zuordnen** für die Spielzeiterfassung zugeordnet werden.
+
+Die automatischen Tests prüfen die Übergabe an Steam mit einem simulierten Windows-Protokollhandler. Eine echte Serveranmeldung braucht die Steam-Installation und einen passenden Account.
 
 ## Cloud-Synchronisierung
 

@@ -339,8 +339,9 @@ class LaunchPage(QWidget):
             else "Noch nicht gestartet"
         )
         self.detail_name.setText(account["nickname"])
+        method = " · Steam" if account.get("steam") else ""
         self.detail_values.setText(
-            f"{REGIONS.get(account['region'], account['region'])} · {group}\n"
+            f"{REGIONS.get(account['region'], account['region'])} · {group}{method}\n"
             f"Spielzeit: {duration(account['total_seconds'])} · Zuletzt: {used}"
         )
         self.detail_start.setText(
@@ -372,9 +373,9 @@ class LaunchPage(QWidget):
         if not ids:
             self.window.notice("Mindestens einen Account ankreuzen oder eine leere Instanz öffnen.")
             return
-        if self.window.ensure_unlocked():
+        accounts = [a for a in self.window.store.accounts() if a["id"] in ids]
+        if accounts and (all(account.get("steam") for account in accounts) or self.window.ensure_unlocked()):
             self.window.store.set("last_launch_selection", ids)
-            accounts = [a for a in self.window.store.accounts() if a["id"] in ids]
             language = self.game_language.currentData()
             if language is None:
                 self.window.launch_accounts(accounts)

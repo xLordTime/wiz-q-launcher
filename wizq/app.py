@@ -374,6 +374,9 @@ class Window(DesktopShell, QMainWindow):
         if len(self.launch_tasks) + len(accounts) > 32:
             self.notice("Maximal 32 Startaufträge gleichzeitig vormerken.")
             return
+        if sum(bool(account and account.get("steam")) for account in accounts) > 1:
+            self.notice("Für den Start über Steam bitte nur einen Steam-Account auswählen.")
+            return
         self.notice(f"{len(accounts)} Startauftrag/Startaufträge in der Warteschlange …")
         for index, account in enumerate(accounts):
             code = account["region"] if account else region
@@ -388,6 +391,11 @@ class Window(DesktopShell, QMainWindow):
             self.run_task(Task(start), self.instance_started, launch=True)
 
     def instance_started(self, result):
+        if result is None:
+            self.notice(
+                "Steam-Start angefordert. Wähle den Spielserver und melde dich im offiziellen Launcher an."
+            )
+            return
         if get(self.store, "auto_playtime_tracking"):
             self.sessions.start(
                 result["pid"], result["created"], result["hwnd"], result["region"], result["account_id"]
@@ -404,6 +412,15 @@ class Window(DesktopShell, QMainWindow):
         self.addons_page.emit_event("session.started", {"region": result["region"], "pid": result["pid"]})
         self.webhook("start", result["account_id"])
         self.poll()
+
+    def launch_steam(self):
+        if self.updating or self.close_after_cloud:
+            self.notice("Warte, bis der Launcher den laufenden Vorgang abgeschlossen hat.")
+            return
+        if len(self.launch_tasks) >= 32:
+            self.notice("Maximal 32 Startaufträge gleichzeitig vormerken.")
+            return
+        self.run_task(Task(backend.open_steam), self.instance_started, launch=True)
 
     def poll(self):
         if self.poll_pending or self.shutting_down or self.close_after_cloud:

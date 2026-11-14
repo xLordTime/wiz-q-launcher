@@ -6,6 +6,7 @@ import json
 import time
 
 from .settings import BY_KEY, REGIONS, set_value
+from .storage import STEAM_ACCOUNT_PREFIX
 
 CHECKPOINT = "cloud_checkpoint"
 LOCAL_SETTINGS = {
@@ -81,6 +82,10 @@ def apply_profile(store, vault, current, desired, backups, checkpoint):
     # on another device while a different device edited the referencing record.
     desired = dict(desired)
     for key, value in tuple(desired.items()):
+        if key.startswith("settings/" + STEAM_ACCOUNT_PREFIX):
+            ident = key.removeprefix("settings/" + STEAM_ACCOUNT_PREFIX)
+            if "accounts/" + ident not in desired:
+                desired.pop(key)
         if key.startswith("accounts/") and "groups/" + str(value["group_id"]) not in desired:
             desired[key] = {**value, "group_id": None}
         if key.startswith("sessions/") and "accounts/" + str(value["account_id"]) not in desired:

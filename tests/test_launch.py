@@ -39,6 +39,42 @@ def test_exact_german_server_examples(profile):
     ]
 
 
+def test_steam_account_routes_through_registered_client_without_credentials(profile, monkeypatch):
+    _, store, vault = profile
+    ident = store.save_account(vault, "Steam Wizard", "", "", "de", steam=True)
+    (account,) = store.accounts()
+    assert account["id"] == ident and account["steam"]
+    vault.lock()
+    opened = []
+    monkeypatch.setattr(backend.sys, "platform", "win32")
+    monkeypatch.setattr(backend.os, "startfile", opened.append, raising=False)
+    monkeypatch.setattr(backend, "native_module", lambda: pytest.fail("No direct launch expected"))
+    monkeypatch.setattr(store, "credentials", lambda *_: pytest.fail("No credential access expected"))
+    assert backend.launch(store, vault, "de", account, "de") is None
+    assert opened == ["steam://run/799960"]
+
+
+def test_missing_steam_client_gets_actionable_error(monkeypatch):
+    def missing(_):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(backend.sys, "platform", "win32")
+    monkeypatch.setattr(backend.os, "startfile", missing, raising=False)
+    with pytest.raises(RuntimeError, match="Steam.*Steam-Bibliothek"):
+        backend.open_steam()
+
+
+def test_direct_launch_identifies_a_steam_library_before_starting(launch_environment, monkeypatch, tmp_path):
+    store, vault, _ = launch_environment
+    install = tmp_path / "Custom library" / "steamapps" / "common" / "Wizard101"
+    (install / "Bin").mkdir(parents=True)
+    (install / "Bin" / "WizardGraphicalClient.exe").touch()
+    store.set("region_install_de", str(install))
+    monkeypatch.setattr(backend, "native_module", lambda: pytest.fail("No direct launch expected"))
+    with pytest.raises(ValueError, match="Über Steam"):
+        backend.launch(store, vault, "de")
+
+
 @pytest.fixture
 def launch_environment(profile, monkeypatch, tmp_path):
     _, store, vault = profile

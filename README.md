@@ -1,5 +1,5 @@
 # Wiz Q Launcher 6
-**Version 6.0.2 for Windows, rebuilt with PySide6.**
+**Version 6.0.3 for Windows, rebuilt with PySide6.**
 
 A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 3 desktop presets plus 20 themes, optional addons, Discord and a crash-resistant profile.
 
@@ -27,6 +27,7 @@ First start:
 - Read-only import of the 5.5.1 encrypted formats and historical playtime totals.
 - PID + creation time session identity, heartbeat checkpoints and no offline credit after crashes.
 - Native game launch and automatic sign-in through the game window, without a required wizwalker installation.
+- A separate Steam launch method opens the official Wizard101 launcher for accounts created through Steam.
 - Multi-monitor window editor with drag/resize preview, layouts, borderless/custom client sizes, saved account templates and durable undo.
 - Independent server and game language for every launch; per-region defaults, one-off overrides and credential-free login diagnostics.
 - Discord RPC/yield-to-game and optional encrypted webhook.
@@ -35,7 +36,7 @@ First start:
 - Opt-in encrypted cloud sync for accounts, playtime, portable settings, themes, addons and recordings through a folder synced by OneDrive, Dropbox, Google Drive or a similar service. See **Addons → Cloud-Synchronisierung** and the in-app help.
 - Explicit GitHub asset selection, size/SHA256 verification, restart helper and rollback snapshots.
 
-**Limits:** Real game login, long recording sessions and global hotkeys need user/device validation. The Windows pipeline tests the packaged GUI and a real EXE exchange with data preservation. Imported region entries are not proof of current region/client compatibility. Steam is not yet a validated flow. The first beta UI is German; an imported English preference is retained for later translation. Updates currently rely on the HTTPS GitHub API asset digest; no separate publisher signature is configured. Custom code workers are not a security sandbox.
+**Limits:** Real game login, long recording sessions and global hotkeys need user/device validation. The Windows pipeline tests the packaged GUI and a real EXE exchange with data preservation. The official launcher handles Steam account login and region selection. The first beta UI is German; an imported English preference is retained for later translation. Updates currently rely on the HTTPS GitHub API asset digest; no separate publisher signature is configured. Custom code workers are not a security sandbox.
 
 ## Development on Windows
 Use Python 3.12 x64 and Rust stable (MSVC build tools).

@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QSpinBox, QStyle
 from wizq.app import Window
 from wizq.cloud import new_code
 from wizq.desktop import Location
+from wizq.pages import AccountDialog
 from wizq.selection import contrast, mix, selection_colors
 from wizq.themes import BUILTINS, DESKTOP_THEMES, catalog
 
@@ -217,6 +218,26 @@ def test_language_override_applies_to_accounts_and_empty_quicklaunch(desktop, mo
     assert launched[-1] == (([None], "de"), {"language": "fr"})
     # Overrides are for this start; the saved region language stays untouched.
     assert window.store.get("region_language_de") is None
+
+
+def test_steam_account_can_be_saved_without_credentials_and_selected_with_locked_vault(desktop, monkeypatch):
+    window, _, *_ = desktop
+    dialog = AccountDialog(window)
+    dialog.steam.setCurrentIndex(dialog.steam.findData(True))
+    dialog.nick.setText("Steam Wizard")
+    assert not dialog.user.isEnabled() and not dialog.password.isEnabled()
+    dialog.save()
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    account = next(a for a in window.store.accounts() if a["steam"])
+    window.refresh_accounts()
+    item = next(item for item in window.launch_page.items() if item.text(0) == "Steam Wizard")
+    item.setCheckState(0, Qt.CheckState.Checked)
+    window.vault.lock()
+    launched = []
+    monkeypatch.setattr(window, "launch_accounts", lambda accounts: launched.extend(accounts))
+    monkeypatch.setattr(window, "ensure_unlocked", lambda: pytest.fail("Steam does not unlock the vault"))
+    window.launch_page.launch_selected()
+    assert launched == [account]
 
 
 def test_per_region_language_has_readable_settings_and_survives_navigation(desktop):
