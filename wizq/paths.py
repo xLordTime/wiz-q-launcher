@@ -5,6 +5,18 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+NEW_LOCAL_FOLDER = "New-WizQ-Launcher"
+DEFAULT_PROFILE_MARKER = ".wizq-local-default"
+
+
+def local_appdata():
+    base = os.environ.get("LOCALAPPDATA")
+    if not base:
+        if sys.platform == "win32":
+            raise RuntimeError("LOCALAPPDATA fehlt. Das Profil wird nicht an einen anderen Ort verschoben.")
+        raise RuntimeError("Entwicklungsstart: --profile <Ordner> verwenden.")
+    return Path(base).resolve()
+
 
 @dataclass(frozen=True)
 class Paths:
@@ -12,15 +24,19 @@ class Paths:
 
     @classmethod
     def default(cls):
-        base = os.environ.get("LOCALAPPDATA")
-        if not base:
-            if sys.platform == "win32":
-                raise RuntimeError(
-                    "LOCALAPPDATA fehlt. Das Profil wird nicht an einen anderen Ort verschoben."
-                )
-            # Developer runs on other platforms still require an explicit profile.
-            raise RuntimeError("Entwicklungsstart: --profile <Ordner> verwenden.")
-        return cls(Path(base) / "WizQLauncher")
+        new = cls.new_local()
+        return new if new.is_new_default else cls(new.root.parent / "WizQLauncher")
+
+    @classmethod
+    def new_local(cls):
+        return cls(local_appdata() / NEW_LOCAL_FOLDER)
+
+    @property
+    def is_new_default(self):
+        if self.root.name.casefold() != NEW_LOCAL_FOLDER.casefold():
+            return False
+        marker = self.root / DEFAULT_PROFILE_MARKER
+        return marker.is_file() and marker.resolve() == marker.absolute()
 
     @property
     def database(self):

@@ -1,5 +1,5 @@
 # Wiz Q Launcher 6
-**Version 6.0.4 Beta 1 for Windows, rebuilt with PySide6.**
+**Version 6.0.4 Beta 2 for Windows, rebuilt with PySide6.**
 
 A local Windows launcher for Wizard101: multi-account launch, groups and drag & drop, playtime, 3 desktop presets plus 20 themes, optional addons, Discord and a crash-resistant profile.
 
@@ -8,13 +8,15 @@ A local Windows launcher for Wizard101: multi-account launch, groups and drag & 
 ## Start
 Download the Windows EXE from [Releases](https://github.com/xLordTime/wiz-q-launcher/releases). Python and Rust are not required to run it. In Settings → Updates choose **Beta** for prereleases or **Stable** for production releases.
 
-The first 5.x → 6.0 transition may download a new EXE and require starting it once. Subsequent 6.x updates use the new verified-download/relay flow. The profile remains in **%LOCALAPPDATA%/WizQLauncher**.
+The first 5.x → 6.0 transition may download a new EXE and require starting it once. Subsequent 6.x updates use the verified download and relay. The usual profile location is `%LOCALAPPDATA%\WizQLauncher`.
 
 First start:
 1. Choose Windows account protection or a real master password.
 2. If found, unlock and import your old profile. Source files are not modified.
 3. Choose game folders per region under Settings → Launcher & Regionen.
 4. Add/select accounts and launch. F1 opens offline help.
+
+Press F6 three times at a startup master password prompt, or use **Einstellungen → Debug → Neues Standardprofil einrichten …**, to set up an empty profile under `%LOCALAPPDATA%\New-WizQ-Launcher`. Completing setup selects it for future starts. The previous profile keeps its data and protection.
 
 ## What is implemented
 - Clear checked-account state with visible ticks, Startauswahl labels and high-contrast focused/unfocused selection in all themes.

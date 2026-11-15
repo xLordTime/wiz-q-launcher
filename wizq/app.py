@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import os
 import sqlite3
 import subprocess
 import sys
@@ -35,7 +36,8 @@ from .hotkeys import Hotkeys
 from .launch_page import LaunchPage
 from .migration import legacy_sources, migrate
 from .pages import AccountsPage, HelpPage, PlaytimePage
-from .paths import Paths, ProfileLock
+from .paths import NEW_LOCAL_FOLDER, Paths, ProfileLock
+from .profile_setup import create_new_local_profile, new_profile_destination
 from .selection import selection_colors
 from .sessions import Sessions
 from .settings import STARTUP_PAGES, THEME_SETTINGS, get
@@ -47,7 +49,31 @@ from .widgets import Button, Task, label, row
 from .windowing import WindowManager
 
 
-def password_dialog(parent, title, confirm=False, windows_option=False):
+class NewLocalProfileRequested(Exception):
+    """Leave the current startup prompt and enter the separate first-run setup."""
+
+
+def confirm_new_local_profile(parent, current):
+    try:
+        target = new_profile_destination()
+    except (OSError, RuntimeError, ValueError) as exc:
+        QMessageBox.warning(parent, "Neues Standardprofil", str(exc))
+        return False
+    return (
+        QMessageBox.warning(
+            parent,
+            "Achtung · Neues Standardprofil",
+            f"Der Launcher richtet ein leeres Profil unter {target.root} ein und nutzt es künftig beim normalen Start. "
+            f"Für deine bisherigen Accounts, Einstellungen und Spielzeiten öffnest du das Profil unter {current.root}.\n\n"
+            "Möchtest du das neue Profil einrichten?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        == QMessageBox.StandardButton.Yes
+    )
+
+
+def password_dialog(parent, title, confirm=False, windows_option=False, *, fresh_from=None):
     dialog = QDialog(parent)
     dialog.setWindowTitle(title)
     dialog.setMinimumWidth(470)
@@ -72,6 +98,21 @@ def password_dialog(parent, title, confirm=False, windows_option=False):
     layout.addLayout(form)
     error = label("")
     layout.addWidget(error)
+    fresh_result = 2
+    if fresh_from is not None:
+        layout.addWidget(label("Für ein leeres Standardprofil dreimal F6 drücken.", muted=True))
+        presses = 0
+
+        def offer_new_profile():
+            nonlocal presses
+            presses += 1
+            if presses == 3:
+                presses = 0
+                if confirm_new_local_profile(dialog, fresh_from):
+                    dialog.done(fresh_result)
+
+        shortcut = QShortcut(QKeySequence("F6"), dialog, activated=offer_new_profile)
+        shortcut.setAutoRepeat(False)
 
     def accept():
         if windows.isChecked():
@@ -85,15 +126,17 @@ def password_dialog(parent, title, confirm=False, windows_option=False):
     windows.toggled.connect(lambda on: (password.setEnabled(not on), repeat.setEnabled(not on)))
     password.setEnabled(not windows.isChecked())
     repeat.setEnabled(not windows.isChecked())
-    if not dialog.exec():
-        return False, None
-    value = None if windows.isChecked() else password.text()
+    result = dialog.exec()
+    accepted = result == QDialog.DialogCode.Accepted
+    value = password.text() if accepted and not windows.isChecked() else None
     password.clear()
     repeat.clear()
-    return True, value
+    if result == fresh_result:
+        raise NewLocalProfileRequested
+    return accepted, value
 
 
-def unlock(vault, parent=None):
+def unlock(vault, parent=None, *, fresh_from=None):
     if vault.mode == "windows":
         try:
             vault.unlock()
@@ -102,7 +145,7 @@ def unlock(vault, parent=None):
             QMessageBox.warning(parent, "Windows-Schutz", str(exc))
             return False
     while True:
-        ok, password = password_dialog(parent, "Tresor entsperren")
+        ok, password = password_dialog(parent, "Tresor entsperren", fresh_from=fresh_from)
         if not ok:
             return False
         try:
@@ -129,6 +172,7 @@ class Window(DesktopShell, QMainWindow):
         self.pool, self.launch_pool = QThreadPool(self), QThreadPool(self)
         self.pool.setMaxThreadCount(3)
         self.force_quit, self.restore_path = False, None
+        self.restart_with_new_profile = False
         self.last_interaction = self.last_backup = time.monotonic()
         self.poll_pending = self.rpc_pending = False
         self.shutting_down = False
@@ -649,6 +693,13 @@ class Window(DesktopShell, QMainWindow):
 
         self.guard(request)
 
+    def request_new_local_profile(self):
+        if self.updating or self.quit_pending or self.restore_path is not None:
+            self.notice("Warte, bis der Launcher den laufenden Vorgang abgeschlossen hat.")
+        elif confirm_new_local_profile(self, self.paths):
+            self.restart_with_new_profile = True
+            self.quit_app()
+
     def reveal(self):
         if self.quit_pending:
             return
@@ -705,23 +756,34 @@ class Window(DesktopShell, QMainWindow):
         self.tray.hide()
 
 
-def startup_profile(paths, exe_dir):
+def startup_profile(paths, exe_dir, *, allow_new_profile=True):
+    fresh_from = paths if allow_new_profile and not paths.is_new_default else None
+
+    def setup_password():
+        return password_dialog(
+            None, "Lokalen Tresor einrichten", confirm=True, windows_option=True, fresh_from=fresh_from
+        )
+
+    first_install = not paths.database.exists()
+    if first_install:
+        ok, password = setup_password()
+        if not ok:
+            return None, None
     store = Store(paths.database)
     try:
         vault = Vault(store)
         if not vault.initialized:
-            ok, password = password_dialog(
-                None, "Lokalen Tresor einrichten", confirm=True, windows_option=True
-            )
+            if not first_install:
+                ok, password = setup_password()
             if not ok:
                 store.close()
                 return None, None
             vault.initialize(password)
-        elif not unlock(vault):
+        elif not unlock(vault, fresh_from=fresh_from):
             store.close()
             return None, None
         if not store.get("migration_checked", False, meta=True):
-            sources = legacy_sources(paths.root, exe_dir)
+            sources = [] if paths.is_new_default else legacy_sources(paths.root, exe_dir)
             if sources:
                 source = sources[0]
                 if len(sources) > 1:
@@ -748,7 +810,9 @@ def startup_profile(paths, exe_dir):
                         )
                         break
                     except (PermissionError, InvalidToken):
-                        ok, password = password_dialog(None, "Bisheriges Masterpasswort für die Übernahme")
+                        ok, password = password_dialog(
+                            None, "Bisheriges Masterpasswort für die Übernahme", fresh_from=fresh_from
+                        )
                         if not ok:
                             store.close()
                             return None, None
@@ -759,15 +823,50 @@ def startup_profile(paths, exe_dir):
         raise
 
 
+def choose_startup_backup(paths):
+    backups = []
+    for candidate in sorted(paths.directory("backups").glob("profile-*.sqlite3"), reverse=True):
+        try:
+            check_database(candidate, full=True)
+            backups.append(candidate)
+        except (OSError, sqlite3.DatabaseError, ProfileError):
+            pass
+    if not backups:
+        raise ProfileError(
+            "Profil beschädigt, keine geprüfte Sicherung vorhanden. Original bleibt erhalten. Eine .sqlite3-Sicherung im backups-Ordner ablegen und erneut starten."
+        )
+    choice, ok = QInputDialog.getItem(
+        None,
+        "Profil wiederherstellen",
+        "Original bleibt erhalten. Geprüfte Sicherung wählen:",
+        [p.name for p in backups],
+        0,
+        False,
+    )
+    return next(p for p in backups if p.name == choice) if ok else None
+
+
+def restart_launcher(*arguments):
+    command = [sys.executable]
+    if getattr(sys, "frozen", False):
+        subprocess.Popen([*command, *arguments], env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"})
+    else:
+        command.append(str(Path(__file__).resolve().parent.parent / "main.py"))
+        subprocess.Popen([*command, *arguments])
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Wiz Q Launcher 6")
     parser.add_argument("--profile", type=Path)
     parser.add_argument("--safe-mode", action="store_true")
     parser.add_argument("--update-job", type=Path)
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--new-local-profile", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.smoke_test and args.profile is None:
         parser.error("Smoke tests require an explicit disposable profile.")
+    if args.new_local_profile and (args.profile or args.update_job or args.smoke_test):
+        parser.error("Das neue Standardprofil erhält seinen eigenen Profilordner.")
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("WizQLauncher")
     app.setApplicationVersion(__version__)
@@ -777,41 +876,45 @@ def main(argv=None):
     lock, store, window = None, None, None
     try:
         paths = Paths(args.profile.resolve()) if args.profile else Paths.default()
-        paths.prepare()
-        lock = ProfileLock(paths.root)
-        exe_dir = (
-            Path(sys.executable).parent
-            if getattr(sys, "frozen", False)
-            else Path(__file__).resolve().parent.parent
-        )
-        try:
-            store, vault = startup_profile(paths, exe_dir)
-        except (sqlite3.DatabaseError, ProfileError):
-            backups = []
-            for candidate in sorted(paths.directory("backups").glob("profile-*.sqlite3"), reverse=True):
+        # The updater's snapshot and health receipt belong to the original launch request.
+        update_profile = paths.root
+        new_profile = args.new_local_profile
+        if not new_profile:
+            exe_dir = (
+                Path(sys.executable).parent
+                if getattr(sys, "frozen", False)
+                else Path(__file__).resolve().parent.parent
+            )
+            lock = ProfileLock(paths.root)
+            try:
                 try:
-                    check_database(candidate, full=True)
-                    backups.append(candidate)
-                except Exception:
-                    pass
-            if not backups:
-                raise ProfileError(
-                    "Profil beschädigt, keine geprüfte Sicherung vorhanden. Original bleibt erhalten. Eine .sqlite3-Sicherung im backups-Ordner ablegen und erneut starten."
-                )
-            choice, ok = QInputDialog.getItem(
-                None,
-                "Profil wiederherstellen",
-                "Original bleibt erhalten. Geprüfte Sicherung wählen:",
-                [p.name for p in backups],
-                0,
-                False,
+                    store, vault = startup_profile(paths, exe_dir, allow_new_profile=not args.smoke_test)
+                except (sqlite3.DatabaseError, ProfileError):
+                    backup = choose_startup_backup(paths)
+                    if backup is None:
+                        return 1
+                    restore_backup(backup, paths.database)
+                    store, vault = startup_profile(paths, exe_dir, allow_new_profile=not args.smoke_test)
+            except NewLocalProfileRequested:
+                lock.close()
+                lock = None
+                new_profile = True
+        if new_profile:
+            new_profile_destination()
+            ok, password = password_dialog(
+                None, f"Tresor für {NEW_LOCAL_FOLDER} einrichten", confirm=True, windows_option=True
             )
             if not ok:
-                return 1
-            restore_backup(next(p for p in backups if p.name == choice), paths.database)
-            store, vault = startup_profile(paths, exe_dir)
+                return 0
+            paths = create_new_local_profile(password)
+            lock = ProfileLock(paths.root)
+            store = Store(paths.database)
+            vault = Vault(store)
+            vault.unlock(password)
+            del password
         if store is None:
             return 0
+        paths.prepare()
         window = Window(paths, store, vault, args.safe_mode)
         window.show_at_startup()
         store.set("last_successful_version", __version__, meta=True)
@@ -819,7 +922,7 @@ def main(argv=None):
             QTimer.singleShot(300, window.tutorial)
         if args.update_job:
             QTimer.singleShot(
-                500, lambda: window.guard(lambda: updates.confirm_start(args.update_job, paths.root))
+                500, lambda: window.guard(lambda: updates.confirm_start(args.update_job, update_profile))
             )
         if get(store, "check_for_updates"):
             QTimer.singleShot(3000, window.settings_page.check_update)
@@ -832,12 +935,11 @@ def main(argv=None):
         store = None
         if window.restore_path:
             restore_backup(window.restore_path, paths.database)
-            command = (
-                [sys.executable]
-                if getattr(sys, "frozen", False)
-                else [sys.executable, str(Path(__file__).resolve().parent.parent / "main.py")]
-            )
-            subprocess.Popen(command + ["--profile", str(paths.root)])
+            lock.close()
+            restart_launcher("--profile", str(paths.root))
+        elif window.restart_with_new_profile:
+            lock.close()
+            restart_launcher("--new-local-profile")
         return result
     except Exception as exc:
         QMessageBox.critical(

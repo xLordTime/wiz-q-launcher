@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QMessageBox,
     QSpinBox,
     QStyleOptionViewItem,
     QSystemTrayIcon,
@@ -14,9 +15,11 @@ from wizq.app import Window
 from wizq.cloud import new_code
 from wizq.desktop import Location
 from wizq.pages import AccountDialog
+from wizq.paths import Paths
 from wizq.selection import contrast, mix, selection_colors
 from wizq.settings import get, set_value
 from wizq.themes import BUILTINS, DESKTOP_THEMES, catalog
+from wizq.widgets import Button
 
 
 @pytest.fixture
@@ -99,6 +102,27 @@ def test_settings_and_addon_submenus_have_clickable_parents(desktop):
     assert window.location == Location()
     window.go(Location(4))
     assert not window.actions["forward"].isEnabled()
+
+
+def test_debug_new_profile_requires_confirmation(desktop, tmp_path, monkeypatch):
+    window, _, *_ = desktop
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    requests = []
+    choices = iter([QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes])
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: next(choices))
+    monkeypatch.setattr(window, "quit_app", lambda: requests.append(window.restart_with_new_profile))
+    window.go(Location(4, section="Debug"))
+    button = next(
+        button
+        for button in window.settings_page.findChildren(Button)
+        if button.text().startswith("Neues Standardprofil einrichten")
+    )
+    assert button.isVisible()
+    button.click()
+    assert not requests and not window.restart_with_new_profile
+    button.click()
+    assert requests == [True]
+    assert not Paths.new_local().root.exists()
 
 
 @pytest.mark.parametrize(

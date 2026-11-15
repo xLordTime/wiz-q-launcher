@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v6.0.4-beta.2
+
+- Press F6 three times at a startup master password prompt or open Settings → Debug to set up an empty local profile under `%LOCALAPPDATA%\New-WizQ-Launcher`.
+- Make the new profile the default after vault setup succeeds. Existing profiles keep their data and protection.
+
 ## v6.0.4-beta.1
 
 - Choose what the window close button does on each PC: exit, minimize to the taskbar, or continue in the notification area.

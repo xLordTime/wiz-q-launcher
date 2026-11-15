@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from . import backend, updates
 from .cloud import META
 from .cloud_profile import CHECKPOINT
+from .paths import NEW_LOCAL_FOLDER
 from .settings import GAME_LANGUAGES, SETTING_CHOICES, SETTINGS, get, set_value
 from .storage import Store
 from .themes import catalog
@@ -43,7 +44,7 @@ class SettingsPage(QWidget):
         layout.addWidget(self.search)
         split = QSplitter()
         self.categories = QListWidget()
-        self.sections = list(dict.fromkeys(s.section for s in SETTINGS))
+        self.sections = [*dict.fromkeys(s.section for s in SETTINGS), "Debug"]
         self.categories.addItems(self.sections)
         self.categories.setMaximumWidth(230)
         split.addWidget(self.categories)
@@ -129,6 +130,7 @@ class SettingsPage(QWidget):
         self.extra("Speicher & Sicherungen", self.backup_actions())
         self.extra("Discord", self.discord_actions())
         self.extra("Updates", self.update_actions())
+        self.extra("Debug", self.debug_actions(), "Neues Standardprofil Debug Profilordner F6")
         self.body.addStretch()
         scroll.setWidget(body)
         split.addWidget(scroll)
@@ -140,9 +142,27 @@ class SettingsPage(QWidget):
         self.update_info = None
         self.update_path = None
 
-    def extra(self, section, card):
-        self.rows.append((section, section, card))
+    def extra(self, section, card, search=""):
+        self.rows.append((section, search or section, card))
         self.body.addWidget(card)
+
+    def debug_actions(self):
+        card, layout = panel()
+        layout.addWidget(label("Achtung · Neues Standardprofil", name="metric"))
+        layout.addWidget(label(f"Aktuelles Profil · {self.window.paths.root}", muted=True))
+        layout.addWidget(
+            label(
+                f"Richtet unter %LOCALAPPDATA%\\{NEW_LOCAL_FOLDER} ein leeres Profil ein. "
+                "Du richtest den Tresor neu ein. Deine bisherigen Accounts, Einstellungen und Spielzeiten findest du im bisherigen Profil.",
+                muted=True,
+            )
+        )
+        button = Button("Neues Standardprofil einrichten …", self.window.request_new_local_profile)
+        if self.window.paths.is_new_default:
+            button.setEnabled(False)
+            button.setText("Neues Standardprofil ist aktiv")
+        layout.addWidget(button)
+        return card
 
     def filter(self, *_):
         query = self.search.text().casefold()

@@ -1,5 +1,5 @@
 # 6.0 profile and recovery
-The profile root remains `%LOCALAPPDATA%/WizQLauncher`. The EXE can live elsewhere. Explicit exports may be written to another user-chosen directory.
+The usual profile root is `%LOCALAPPDATA%\WizQLauncher`. Completing the empty profile setup selects `%LOCALAPPDATA%\New-WizQ-Launcher` for future starts. The selection marker is published with the initialized database and the new profile skips legacy import. Explicit `--profile` selections take precedence. The EXE can live elsewhere. Explicit exports may be written to another user-chosen directory.
 
 ## Authoritative storage
 `data/launcher-v6.sqlite3`: settings, groups, account metadata, encrypted credential fields, sessions, activity intervals and migration markers.

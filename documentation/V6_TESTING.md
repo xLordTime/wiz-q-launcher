@@ -1,15 +1,28 @@
-# Wiz Q Launcher 6.0.4 Beta 1 testen
+# Wiz Q Launcher 6.0.4 Beta 2 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
 ## Download und Start
 
 1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **Beta** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
-2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.1.exe** aus dem [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.1) herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten.
+2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.2.exe** herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten. [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.2)
 3. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
 4. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
-Das Profil liegt unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert die alten Quelldateien nicht. Ein Launcher-Profil kann jeweils nur von einer laufenden Launcher-Instanz geöffnet werden.
+Das Profil liegt normalerweise unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert die alten Quelldateien nicht. Ein Launcher-Profil kann jeweils nur von einer laufenden Launcher-Instanz geöffnet werden.
+
+## Leeres Standardprofil einrichten
+
+1. Beim Start im Masterpasswortdialog dreimal **F6** drücken. Das funktioniert bei der ersten Tresoreinrichtung, beim Entsperren eines Profils und bei der Passwortabfrage für die 5.x-Datenübernahme.
+2. Alternativ unter **Einstellungen → Debug** auf **Neues Standardprofil einrichten …** klicken. Zum Einrichten startet der Launcher nach der Bestätigung neu.
+3. Die Warnung bestätigen und den Schutz für den neuen Tresor wählen. Bei Abbruch bleibt der bisherige Profilordner der Standard.
+4. Nach erfolgreicher Einrichtung den Launcher noch einmal normal starten. Er öffnet das leere Profil unter `%LOCALAPPDATA%\New-WizQ-Launcher` ohne Altimport.
+
+Der bisherige Profilordner kann mit dem üblichen Tresorschutz weiter geöffnet werden. Den folgenden PowerShell-Befehl im Ordner der EXE ausführen.
+
+```powershell
+.\WizQLauncher-v6.0.4-beta.2.exe --profile "$env:LOCALAPPDATA\WizQLauncher"
+```
 
 ## Fensterverhalten und Einstellungen
 
