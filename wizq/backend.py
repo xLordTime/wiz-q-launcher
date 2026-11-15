@@ -13,10 +13,9 @@ from pathlib import Path
 import psutil
 
 from .game_install import CLIENT, PATCHER, install_folder, is_steam_install
-from .settings import GAME_LANGUAGES, game_language, get
+from .settings import GAME_LANGUAGES, game_language, get, login_endpoint
 
 PROCESS_NAME = CLIENT.name.casefold()
-STEAM_URI = "steam://run/799960"
 GAME_FOLDERS = "Einstellungen → Launcher & Regionen"
 GAME_UPDATE = GAME_FOLDERS + " → Spiel aktualisieren"
 
@@ -127,26 +126,15 @@ def window_rect(hwnd):
     return Win32Windows().rect(hwnd)
 
 
-def open_steam():
-    if sys.platform != "win32":
-        raise RuntimeError("Der Steam-Start ist nur unter Windows möglich.")
-    try:
-        os.startfile(STEAM_URI)
-    except OSError:
-        raise RuntimeError(
-            "Steam konnte nicht geöffnet werden. Öffne Wizard101 direkt in deiner Steam-Bibliothek."
-        ) from None
-
-
-def selected_game_folder(store, region):
+def selected_game_folder(store, region, *, allow_steam_library=False):
     try:
         folder = install_folder(get(store, "region_install_" + region))
     except ValueError as exc:
         raise ValueError(f"{region.upper()} · {exc} Öffne {GAME_FOLDERS}.") from None
-    if is_steam_install(folder):
+    if is_steam_install(folder) and not allow_steam_library:
         raise ValueError(
-            "Dieser Spielordner liegt in einer Steam-Bibliothek. Wähle für diesen Account die Startmethode Über Steam "
-            "oder unter Launcher & Regionen den Spielordner der eigenständigen Installation."
+            "Dieser Spielordner liegt in einer Steam-Bibliothek. Nutze Steam-Direktstart für diesen Ordner. "
+            "Für den normalen Direktstart und den Patch-Assistenten wähle den Ordner der eigenständigen Installation."
         )
     return folder
 
@@ -164,16 +152,14 @@ def open_game_patcher(store, region):
     return patcher
 
 
-def launch(store, vault, region, account=None, language=None):
+def launch(store, vault, region, account=None, language=None, *, steam=False):
     if sys.platform != "win32":
         raise RuntimeError("Der Spielstart ist nur unter Windows möglich.")
-    if account and account.get("steam"):
-        open_steam()
-        return None
+    steam = steam or bool(account and account.get("steam"))
     language = game_language(store, region, language)
-    path = selected_game_folder(store, region)
+    path = selected_game_folder(store, region, allow_steam_library=steam)
     exe = path / CLIENT
-    server, port = get(store, "region_server_" + region), get(store, "region_port_" + region)
+    server, port = login_endpoint(store, region, steam=steam)
     try:
         if not exe.is_file():
             raise ValueError(
@@ -206,7 +192,7 @@ def launch(store, vault, region, account=None, language=None):
             f"Fenster des gestarteten Clients wurde nicht rechtzeitig gefunden · {exe}."
         )
     warning = None
-    if account:
+    if account and not steam:
         credentials = store.credentials(vault, account["id"])
         ready_timeout = get(store, "login_ready_timeout")
         payload = {
@@ -248,8 +234,8 @@ def launch(store, vault, region, account=None, language=None):
             warning = f"Autologin [worker_crash]: {LOGIN_ERRORS['worker_crash']} Das Fenster bleibt für die manuelle Anmeldung offen."
         finally:
             del credentials, payload
-        if get(store, "set_window_title"):
-            set_title(hwnd, account["nickname"])
+    if account and get(store, "set_window_title"):
+        set_title(hwnd, account["nickname"])
     return {
         "pid": pid,
         "created": created,
@@ -257,6 +243,8 @@ def launch(store, vault, region, account=None, language=None):
         "exe": str(exe),
         "region": region,
         "language": language,
+        "steam": steam,
+        "login_endpoint": f"{server}:{port}",
         "account_id": account["id"] if account else None,
         "warning": warning,
     }

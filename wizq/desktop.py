@@ -202,7 +202,7 @@ class DesktopShell:
         action("home", "Mein Launcher", self.go_home, "home", "Alt+Home")
         action("launch", "Auswahl starten", self.launch_page.launch_selected, "play", "F5")
         action("empty", "Leere Instanz …", self.launch_empty_dialog, "window", "Ctrl+Shift+N")
-        action("steam", "Wizard101 über Steam starten", self.launch_steam)
+        action("steam", "Steam-Direktstart …", lambda: self.launch_page.empty_dialog(steam=True))
         action("add", "Account hinzufügen …", self.accounts_page.add, "add", "Ctrl+N")
         action("group", "Gruppe hinzufügen …", self.accounts_page.add_group, "folder")
         action("edit", "Eigenschaften …", self.edit_current, "edit", "Alt+Return")

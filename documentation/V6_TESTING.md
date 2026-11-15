@@ -1,11 +1,11 @@
-# Wiz Q Launcher 6.0.4 Beta 3 testen
+# Wiz Q Launcher 6.0.4 Beta 4 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
 ## Download und Start
 
 1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **Beta** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
-2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.3.exe** herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten. [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.3)
+2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.4.exe** herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten. [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.4)
 3. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
 4. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
@@ -28,7 +28,7 @@ Das Profil liegt normalerweise unter `%LOCALAPPDATA%\WizQLauncher`. Das Importie
 Der bisherige Profilordner kann mit dem üblichen Tresorschutz weiter geöffnet werden. Den folgenden PowerShell-Befehl im Ordner der EXE ausführen.
 
 ```powershell
-.\WizQLauncher-v6.0.4-beta.3.exe --profile "$env:LOCALAPPDATA\WizQLauncher"
+.\WizQLauncher-v6.0.4-beta.4.exe --profile "$env:LOCALAPPDATA\WizQLauncher"
 ```
 
 ## Fensterverhalten und Einstellungen
@@ -39,13 +39,13 @@ Der bisherige Profilordner kann mit dem üblichen Tresorschutz weiter geöffnet 
 4. Unter **Darstellung** Navigationsbaum, Werkzeugleiste und Accountdetails aus- und einblenden. Die ersten beiden Optionen stehen auch unter **Ansicht** bereit.
 5. Unter **Launcher & Regionen** die letzte Startauswahl, die voreingestellte Anzahl im Quicklaunch und das Minimieren nach dem Spielstart prüfen. Unter **Fenster & Shortcuts** die beiden globalen Tastenkürzel einzeln umschalten.
 
-## Steam-Account testen
+## Steam-Direktstart testen
 
-1. Einen bestehenden Steam-Account in der Liste bearbeiten oder einen Eintrag mit Nickname anlegen. **Startmethode → Über Steam** wählen und speichern.
-2. Den Account auswählen und starten. Steam muss den offiziellen Wizard101-Launcher öffnen. Dort den Server aus der Account-Erstellung auswählen und anmelden.
-3. Über **Datei → Wizard101 über Steam starten** lässt sich der Start ohne Account-Eintrag prüfen. Nach dem Start kann ein sichtbarer Spielclient unter **Laufende Instanzen → Account zuordnen** für die Spielzeiterfassung zugeordnet werden.
+1. Unter **Einstellungen → Launcher & Regionen** die passende **Steam-Loginadresse** prüfen. Für EU-Regionen ist `login-en.eu.wizard101.com:12000` voreingestellt. Die Region bestimmt auch den gespeicherten Spielordner. Ein Ordner aus einer Steam-Bibliothek kann für diese Startmethode von Hand gewählt werden.
+2. Beim Account **Startmethode → Steam-Direktstart** wählen. Bisherige Steam-Einträge verwenden beim nächsten Start diese Methode. Der Spielclient öffnet sich direkt und zeigt die manuelle Anmeldung. Die Statuszeile nennt die verwendete Loginadresse.
+3. Über **Datei → Steam-Direktstart …** den Start ohne Account testen. Region und Spielsprache im Dialog wählen. Den sichtbaren Client kannst du unter **Laufende Instanzen → Account zuordnen** für die Spielzeiterfassung zuordnen.
 
-Die automatischen Tests prüfen die Übergabe an Steam mit einem simulierten Windows-Protokollhandler. Eine echte Serveranmeldung braucht die Steam-Installation und einen passenden Account.
+Die automatischen Tests prüfen den Aufruf der Client-EXE und die Loginadresse. Die Anmeldung im Spielfenster braucht ein für den gewählten Server gültiges Wizard101-Konto. Steam-gebundene Konten verwenden die Steam-Anmeldung. [Wizard101-FAQ](https://eu.wizard101.com/game/help-faq)
 
 ## Cloud-Synchronisierung
 

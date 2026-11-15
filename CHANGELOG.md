@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v6.0.4-beta.4
+
+- Start Steam-marked profiles directly in the game client with a separate, editable login address per region.
+- Open a manual sign-in instance through File → Steam-Direktstart. Existing Steam-marked profiles use this route automatically.
+
 ## v6.0.4-beta.3
 
 - Find registered Wizard101 installations and common game folders on local drives, including A:. Choose the exact folder per region when several copies exist.

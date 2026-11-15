@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QInputDialog,
+    QLabel,
     QMessageBox,
     QSpinBox,
     QStyleOptionViewItem,
@@ -423,6 +424,25 @@ def test_steam_account_can_be_saved_without_credentials_and_selected_with_locked
     monkeypatch.setattr(window, "ensure_unlocked", lambda: pytest.fail("Steam does not unlock the vault"))
     window.launch_page.launch_selected()
     assert launched == [account]
+
+
+def test_steam_menu_starts_directly_with_selected_region_and_language(desktop, monkeypatch):
+    window, *_ = desktop
+    launched = []
+    set_value(window.store, "region_steam_address_it", "login-override.example.test:12008")
+    monkeypatch.setattr(window, "launch_accounts", lambda *args, **kwargs: launched.append((args, kwargs)))
+
+    def choose(dialog):
+        assert dialog.windowTitle() == "Quicklaunch – Steam-Direktstart"
+        region, language = dialog.findChildren(QComboBox)
+        region.setCurrentIndex(region.findData("it"))
+        language.setCurrentIndex(language.findData("us"))
+        assert any("login-override.example.test:12008" in label.text() for label in dialog.findChildren(QLabel))
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", choose)
+    window.actions["steam"].trigger()
+    assert launched == [(([None], "it"), {"steam": True, "language": "us"})]
 
 
 def test_per_region_language_has_readable_settings_and_survives_navigation(desktop):

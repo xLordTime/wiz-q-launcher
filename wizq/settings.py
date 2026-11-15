@@ -55,6 +55,31 @@ def game_language(store, region, override=None):
     return language
 
 
+def server_hostname(value):
+    return bool(value) and not any(char.isspace() or char in ":/\\" for char in value)
+
+
+def steam_endpoint(value):
+    host, separator, port = value.partition(":")
+    if not separator:
+        port = "12000"
+    if (
+        not server_hostname(host)
+        or not port.isascii()
+        or not port.isdecimal()
+        or len(port) > 5
+        or not 1 <= int(port) <= 65535
+    ):
+        raise ValueError("Gib einen Hostnamen mit optionalem Port ein, etwa login-en.eu.wizard101.com:12000.")
+    return host, int(port)
+
+
+def login_endpoint(store, region, *, steam=False):
+    if steam:
+        return steam_endpoint(get(store, "region_steam_address_" + region))
+    return get(store, "region_server_" + region), get(store, "region_port_" + region)
+
+
 @dataclass(frozen=True)
 class Setting:
     key: str
@@ -196,7 +221,7 @@ SETTINGS = [
         "Launcher & Regionen",
         "Launcher nach Spielstart minimieren",
         False,
-        "Minimiert den Launcher nach einem erfolgreichen Direktstart. Bei Steam erfolgt das beim Öffnen des offiziellen Launchers. Meldungen zum Autologin bleiben sichtbar.",
+        "Minimiert den Launcher, sobald das direkt gestartete Spielfenster geöffnet ist. Meldungen zum Autologin bleiben sichtbar.",
         local=True,
     ),
     Setting(
@@ -507,6 +532,13 @@ for code, title in REGIONS.items():
                 high=65535,
             ),
             Setting(
+                "region_steam_address_" + code,
+                "Launcher & Regionen",
+                f"{code.upper()} · Steam-Loginadresse",
+                "login.us.wizard101.com:12000" if code == "us" else "login-en.eu.wizard101.com:12000",
+                "Host und optionaler Port für Steam-Direktstart. Ohne Portangabe wird 12000 verwendet.",
+            ),
+            Setting(
                 "region_language_" + code,
                 "Launcher & Regionen",
                 f"{code.upper()} · Spielsprache",
@@ -543,10 +575,10 @@ def set_value(store, key, value):
         raise ValueError("Ungültige Auswahl")
     if type(value) is int and not spec.low <= value <= spec.high:
         raise ValueError("Wert außerhalb des gültigen Bereichs")
-    if key.startswith("region_server_") and (
-        not value or any(c.isspace() for c in value) or ":" in value or "/" in value
-    ):
+    if key.startswith("region_server_") and not server_hostname(value):
         raise ValueError("Nur Serverhostname ohne Port oder Pfad eingeben")
+    if key.startswith("region_steam_address_"):
+        steam_endpoint(value)
     store.set(key, value)
     if key == "borderless":
         store.set("window_mode", "borderless" if value else "windowed")

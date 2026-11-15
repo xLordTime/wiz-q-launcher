@@ -56,7 +56,7 @@ class AccountDialog(QDialog):
         self.region, self.group = Combo(), Combo()
         self.steam = Combo()
         self.steam.addItem("Direkt (Wiz Q)", False)
-        self.steam.addItem("Über Steam", True)
+        self.steam.addItem("Steam-Direktstart", True)
         self.steam.setAccessibleName("Startmethode")
         for code, name in REGIONS.items():
             self.region.addItem(f"{code.upper()} · {name}", code)
@@ -119,7 +119,8 @@ class AccountDialog(QDialog):
         if steam:
             self.visible_password.setChecked(False)
         self.login_help.setText(
-            "Steam öffnet den offiziellen Launcher. Melde dich dort beim passenden Spielserver an. Zugangsdaten sind hier optional."
+            "Öffnet den Spielclient mit der Steam-Loginadresse deiner Region. Melde dich im Spiel mit einem "
+            "passenden Wizard101-Konto an. Reine Steam-Konten brauchen die Steam-Anmeldung."
             if steam
             else "Wiz Q speichert deine Zugangsdaten verschlüsselt und gibt sie beim Direktstart ein."
         )
@@ -392,7 +393,18 @@ ARTICLES = {
     "Navigation & Pfadleiste": "# Explorer-Navigation\n\nDie Pfadleiste ist interaktiv: **Mein Launcher** öffnet alle Accounts und hebt Such-/Regionsfilter auf. Jeder weitere Pfadteil öffnet seinen Bereich. Der kleine Pfeil am Pfadteil zeigt ein Menü mit Bereichen, Gruppen oder Unterseiten. Baumansicht und Pfadleiste bleiben synchron.\n\n**Beispiel:** Mein Launcher → Alle Accounts → Entdecker-Team. Ein Klick auf Alle Accounts zeigt wieder alle Gruppen. Gruppen werden anhand ihrer IDs gefiltert, auch wenn sie Accounts aus mehreren Regionen enthalten.\n\n**Zurück/Vorwärts:** Alt+Links / Alt+Rechts. **Eine Ebene höher:** Alt+Oben. **Startansicht:** Alt+Pos1. Ein Rechtsklick auf die Pfadleiste kopiert den sichtbaren Pfad.\n\nEine markierte Zeile zeigt die Accountdetails. Haken, fette Schrift und **Ausgewählt** in der Spalte **Startauswahl** bestätigen die Accounts für den Start. Der Startknopf nennt ihre Anzahl. Angekreuzte Accounts bleiben beim Filtern gemerkt. **Gestartet werden nur sichtbare, angekreuzte Accounts.** F5 startet diese Auswahl. Strg+N legt einen Account an, Strg+Umschalt+N öffnet Quicklaunch und Strg+S erstellt eine Sicherung.\n\nUnter Einstellungen → Darstellung stehen Aero Explorer, Graphit Werkbank, Arkaner Explorer sowie die bisherigen 20 Themes bereit. Fensteraufteilungen lassen sich an den Trennleisten ziehen und werden beim Beenden gespeichert.",
     "Schnellstart": "# Willkommen bei Wiz Q Launcher 6\n\n1. Unter **Einstellungen → Launcher & Regionen** den Spielordner je Region auswählen.\n2. Im **Account Management** einen Nickname, Username, Passwort und die passende Region speichern.\n3. Unter **Launch** die Accounts ankreuzen und **Auswahl starten** wählen.\n\nEine **leere Instanz** startet ohne gespeicherte Zugangsdaten. Nach Spielupdates kann Autologin vorübergehend nicht verfügbar sein. In diesem Fall bleibt die manuelle Anmeldung möglich.",
     "Accounts & Gruppen": "# Accounts und Gruppen\n\nDer Nickname ist dein frei änderbarer Anzeigename; der Username wird für die Anmeldung benötigt. Passwörter werden nicht gekürzt oder getrimmt. Gruppen organisieren Accounts, ohne Zugangsdaten zu duplizieren.\n\n**Beispiel:** Eine Gruppe ‚DE-Team‘ und eine Gruppe ‚US‘. Ziehe einen Account auf einen Gruppennamen oder innerhalb einer Gruppe an seine gewünschte Position. Sterne markieren Favoriten. Ein Startprofil speichert die Auswahl anhand stabiler Account-IDs.",
-    "Steam-Accounts": "# Wizard101 über Steam starten\n\nÖffne die Eigenschaften deines über Steam erstellten Accounts und stelle **Startmethode → Über Steam** ein. Speichere und starte den Account über die Startauswahl. Alternativ öffnet **Datei → Wizard101 über Steam starten** die Steam-Version sofort.\n\nMelde dich im offiziellen Launcher an und wähle denselben Spielserver wie bei der Account-Erstellung. Die Server- und Sprachparameter in Wiz Q gelten für den Direktstart. Das Launchermenü von Steam übernimmt den Spielstart und die Anmeldung.\n\nEinen über Steam gestarteten Client kannst du unter **Laufende Instanzen → Account zuordnen** für die Spielzeiterfassung zuordnen. Bei einer Fehlermeldung direkt aus der Steam-Bibliothek starten und den genauen Fehlercode prüfen. [Wizard101 Steam-FAQ](https://steamcommunity.com/app/799960/discussions/0/1732086554919176948/).",
+    "Steam-Accounts": (
+        "# Steam-Direktstart\n\n"
+        "Wähle beim Account **Startmethode → Steam-Direktstart**. Für eine leere Instanz öffne "
+        "**Datei → Steam-Direktstart …** und wähle die Region und Spielsprache. Wiz Q öffnet den "
+        "Spielclient direkt aus dem gespeicherten Spielordner der Region.\n\n"
+        "Unter **Einstellungen → Launcher & Regionen** hat jede Region eine eigene **Steam-Loginadresse**. "
+        "Für EU-Regionen ist die Vorgabe `login-en.eu.wizard101.com:12000`. Verwende die Loginadresse "
+        "des gewünschten Servers, wenn dein Konto zu einer anderen Spielwelt gehört.\n\n"
+        "Im Spiel meldest du dich mit einem Wizard101-Konto an, das der gewählte Server akzeptiert. "
+        "Steam- und Website-Konten sind bei KingsIsle getrennt. Für Figuren eines reinen Steam-Kontos "
+        "benötigst du weiterhin die Steam-Anmeldung. [Wizard101-FAQ](https://eu.wizard101.com/game/help-faq)"
+    ),
     "Regionen & Autologin": (
         "# Regionen und Autologin\n\n"
         "Unter **Einstellungen → Launcher & Regionen** die Region wählen und **Installationen suchen …** "

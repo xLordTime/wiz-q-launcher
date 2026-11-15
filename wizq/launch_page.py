@@ -341,7 +341,7 @@ class LaunchPage(QWidget):
             else "Noch nicht gestartet"
         )
         self.detail_name.setText(account["nickname"])
-        method = " · Steam" if account.get("steam") else ""
+        method = " · Steam-Direktstart" if account.get("steam") else ""
         self.detail_values.setText(
             f"{REGIONS.get(account['region'], account['region'])} · {group}{method}\n"
             f"Spielzeit: {duration(account['total_seconds'])} · Zuletzt: {used}"
@@ -384,9 +384,9 @@ class LaunchPage(QWidget):
             else:
                 self.window.launch_accounts(accounts, language=language)
 
-    def empty_dialog(self):
+    def empty_dialog(self, *, steam=False):
         dialog = QDialog(self.window)
-        dialog.setWindowTitle("Quicklaunch – leere Instanz")
+        dialog.setWindowTitle("Quicklaunch – Steam-Direktstart" if steam else "Quicklaunch – leere Instanz")
         dialog.setMinimumWidth(340)
         layout = QVBoxLayout(dialog)
         form = QFormLayout()
@@ -412,7 +412,11 @@ class LaunchPage(QWidget):
             selected_language = language.currentData()
             if selected_language is None:
                 selected_language = game_language(self.window.store, region.currentData())
-            profile_language.setText("Verwendete Spielsprache: " + GAME_LANGUAGES[selected_language])
+            summary = "Verwendete Spielsprache · " + GAME_LANGUAGES[selected_language]
+            if steam:
+                address = get(self.window.store, "region_steam_address_" + region.currentData())
+                summary += "\nSteam-Loginadresse · " + address
+            profile_language.setText(summary)
 
         region.currentIndexChanged.connect(show_language)
         language.currentIndexChanged.connect(show_language)
@@ -433,11 +437,10 @@ class LaunchPage(QWidget):
         layout.addWidget(buttons)
         if dialog.exec():
             self.quicklaunch_count = count.value()
-            args = ([None] * count.value(), region.currentData())
-            if language.currentData() is None:
-                self.window.launch_accounts(*args)
-            else:
-                self.window.launch_accounts(*args, language=language.currentData())
+            options = {"steam": True} if steam else {}
+            if language.currentData() is not None:
+                options["language"] = language.currentData()
+            self.window.launch_accounts([None] * count.value(), region.currentData(), **options)
 
     def launch_empty(self):
         self.empty_dialog()

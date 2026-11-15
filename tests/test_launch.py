@@ -42,29 +42,63 @@ def test_exact_german_server_examples(profile):
     ]
 
 
-def test_steam_account_routes_through_registered_client_without_credentials(profile, monkeypatch):
-    _, store, vault = profile
+@pytest.mark.parametrize("native", [True, False])
+def test_steam_account_starts_client_on_configured_server_without_credentials(
+    launch_environment, monkeypatch, tmp_path, native
+):
+    store, vault, install = launch_environment
+    if not native:
+        install = tmp_path / "Steam library" / "steamapps" / "common" / "Wizard101"
+        (install / "Bin").mkdir(parents=True)
+        (install / game_install.CLIENT).touch()
+        store.set("region_install_de", str(install))
     ident = store.save_account(vault, "Steam Wizard", "", "", "de", steam=True)
     (account,) = store.accounts()
     assert account["id"] == ident and account["steam"]
+    set_value(store, "region_port_de", 12001)
     vault.lock()
-    opened = []
-    monkeypatch.setattr(backend.sys, "platform", "win32")
-    monkeypatch.setattr(backend.os, "startfile", opened.append, raising=False)
-    monkeypatch.setattr(backend, "native_module", lambda: pytest.fail("No direct launch expected"))
+    calls = []
+    module = SimpleNamespace(launch=lambda *args: calls.append(args) or 42) if native else None
+    monkeypatch.setattr(backend, "native_module", lambda: module)
+    monkeypatch.setattr(
+        backend.subprocess,
+        "Popen",
+        lambda args, **kwargs: calls.append((args, kwargs)) or SimpleNamespace(pid=42),
+    )
+    monkeypatch.setattr(backend, "set_title", lambda *args: None)
+    monkeypatch.setattr(backend.os, "startfile", lambda *_: pytest.fail("No Steam application expected"), raising=False)
+    monkeypatch.setattr(backend.subprocess, "run", lambda *_: pytest.fail("No login worker expected"))
     monkeypatch.setattr(store, "credentials", lambda *_: pytest.fail("No credential access expected"))
-    assert backend.launch(store, vault, "de", account, "de") is None
-    assert opened == ["steam://run/799960"]
+    result = backend.launch(store, vault, "de", account, "de")
+    assert result["account_id"] == ident and result["steam"]
+    assert result["login_endpoint"] == "login-en.eu.wizard101.com:12000"
+    if native:
+        assert calls == [(str(install), "login-en.eu.wizard101.com:12000", "de")]
+    else:
+        assert calls == [(
+            [str(install / game_install.CLIENT), "-L", "login-en.eu.wizard101.com", "12000", "-A", "de"],
+            {"cwd": install / "Bin"},
+        )]
 
 
-def test_missing_steam_client_gets_actionable_error(monkeypatch):
-    def missing(_):
-        raise FileNotFoundError
-
-    monkeypatch.setattr(backend.sys, "platform", "win32")
-    monkeypatch.setattr(backend.os, "startfile", missing, raising=False)
-    with pytest.raises(RuntimeError, match="Steam.*Steam-Bibliothek"):
-        backend.open_steam()
+def test_empty_steam_and_standard_launch_use_independent_server_addresses(launch_environment, monkeypatch):
+    store, vault, install = launch_environment
+    calls = []
+    monkeypatch.setattr(backend, "native_module", lambda: SimpleNamespace(launch=lambda *a: calls.append(a) or 42))
+    key = "region_steam_address_de"
+    with pytest.raises(ValueError, match="Hostnamen"):
+        set_value(store, key, "login.example.test:70000")
+    set_value(store, key, "login.example.test:12345")
+    result = backend.launch(store, vault, "de", language="us", steam=True)
+    assert result["account_id"] is None and result["steam"]
+    assert result["login_endpoint"] == "login.example.test:12345"
+    standard = backend.launch(store, vault, "de", language="us")
+    assert not standard["steam"]
+    assert calls == [
+        (str(install), "login.example.test:12345", "us"),
+        (str(install), "login-de.eu.wizard101.com:12000", "us"),
+    ]
+    assert get(store, "region_steam_address_us") == "login.us.wizard101.com:12000"
 
 
 def test_direct_launch_identifies_a_steam_library_before_starting(launch_environment, monkeypatch, tmp_path):
@@ -74,7 +108,7 @@ def test_direct_launch_identifies_a_steam_library_before_starting(launch_environ
     (install / "Bin" / "WizardGraphicalClient.exe").touch()
     store.set("region_install_de", str(install))
     monkeypatch.setattr(backend, "native_module", lambda: pytest.fail("No direct launch expected"))
-    with pytest.raises(ValueError, match="Über Steam"):
+    with pytest.raises(ValueError, match="Steam-Direktstart"):
         backend.launch(store, vault, "de")
 
 

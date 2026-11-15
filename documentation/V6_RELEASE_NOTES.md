@@ -1,7 +1,7 @@
-## Wiz Q Launcher 6.0.4 Beta 3
+## Wiz Q Launcher 6.0.4 Beta 4
 
-- Unter **Einstellungen → Launcher & Regionen** findet **Installationen suchen …** registrierte Installationen und übliche Spielordner auf lokalen Laufwerken wie `A:` oder `D:`. Bei mehreren Kopien kannst du den gewünschten Pfad pro Region auswählen.
-- Für den Spielstart kannst du auch den `Bin`-Ordner oder die Client-EXE als vollständigen Pfad eintragen. Der Q-Launcher zeigt die gestartete EXE in der Statuszeile an.
-- Meldet Wizard101 einen veralteten Client, öffnet **Spiel aktualisieren** den offiziellen Wizard101-Assistenten der gewählten Installation. Lass den Spielpatch dort durchlaufen und starte dann erneut über Quicklaunch.
+- Steam-markierte Accounts starten den Spielclient direkt. Die Startmethode heißt jetzt **Steam-Direktstart**. **Datei → Steam-Direktstart …** öffnet eine leere Instanz mit derselben Logik.
+- Unter **Einstellungen → Launcher & Regionen** kannst du für jede Region die **Steam-Loginadresse** einstellen. Die EU-Vorgabe aus der Steam-Patchconfig ist `login-en.eu.wizard101.com:12000`.
+- Du meldest dich im Spielfenster mit einem für den gewählten Server gültigen Wizard101-Konto an. Für reine Steam-Konten verlangt KingsIsle weiterhin die Steam-Anmeldung. [Wizard101-FAQ](https://eu.wizard101.com/game/help-faq)
 
 Für das Q-Launcher-Update unter **Einstellungen → Updates** den Kanal **Beta** wählen und nach dem Download **Neustarten & anwenden** auswählen. Windows-EXE, Testanleitung und SHA-256-Prüfsumme stehen unter Assets.

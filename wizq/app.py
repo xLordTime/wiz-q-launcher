@@ -471,7 +471,7 @@ class Window(DesktopShell, QMainWindow):
         dialog.exec()
         self.store.set("tutorial_seen", True)
 
-    def launch_accounts(self, accounts, region=None, language=None):
+    def launch_accounts(self, accounts, region=None, language=None, *, steam=False):
         if self.addons_page.cloud.busy or self.quit_pending:
             self.notice("Nach dem Cloud-Abgleich kannst du neue Spielinstanzen starten.")
             return
@@ -482,9 +482,6 @@ class Window(DesktopShell, QMainWindow):
         if len(self.launch_tasks) + len(accounts) > 32:
             self.notice("Maximal 32 Startaufträge gleichzeitig vormerken.")
             return
-        if sum(bool(account and account.get("steam")) for account in accounts) > 1:
-            self.notice("Für den Start über Steam bitte nur einen Steam-Account auswählen.")
-            return
         self.notice(f"{len(accounts)} Startauftrag/Startaufträge in der Warteschlange …")
         for index, account in enumerate(accounts):
             code = account["region"] if account else region
@@ -494,7 +491,7 @@ class Window(DesktopShell, QMainWindow):
             ):
                 if delay:
                     time.sleep(delay)
-                return backend.launch(self.store, self.vault, c, a, language=lang)
+                return backend.launch(self.store, self.vault, c, a, language=lang, steam=steam)
 
             self.run_task(Task(start), self.instance_started, launch=True)
 
@@ -502,22 +499,18 @@ class Window(DesktopShell, QMainWindow):
         minimize = (
             not self.quit_pending and get(self.store, "launcher_minimize_on_launch") and self.isVisible()
         )
-        if result is None:
-            self.notice(
-                "Steam-Start angefordert. Wähle den Spielserver und melde dich im offiziellen Launcher an."
-            )
-            if minimize:
-                self.showMinimized()
-            return
         if get(self.store, "auto_playtime_tracking"):
             self.sessions.start(
                 result["pid"], result["created"], result["hwnd"], result["region"], result["account_id"]
             )
-        message = result["warning"] or (
-            "Client gestartet · Anmeldedaten eingegeben. Serveranmeldung im Spiel prüfen."
-            if result["account_id"]
-            else "Leere Instanz gestartet"
-        )
+        if result["steam"]:
+            message = f"Steam-Direktstart · {result['login_endpoint']} · Im Spiel anmelden"
+        else:
+            message = result["warning"] or (
+                "Client gestartet · Anmeldedaten eingegeben. Serveranmeldung im Spiel prüfen."
+                if result["account_id"]
+                else "Leere Instanz gestartet"
+            )
         self.notice(f"{message} · {result['exe']}")
         self.guard(lambda: self.window_manager.apply_saved(result))
         self.addons_page.emit_event("session.started", {"region": result["region"], "pid": result["pid"]})
@@ -525,15 +518,6 @@ class Window(DesktopShell, QMainWindow):
         self.poll()
         if minimize and not result["warning"]:
             self.showMinimized()
-
-    def launch_steam(self):
-        if self.updating or self.quit_pending:
-            self.notice("Warte, bis der Launcher den laufenden Vorgang abgeschlossen hat.")
-            return
-        if len(self.launch_tasks) >= 32:
-            self.notice("Maximal 32 Startaufträge gleichzeitig vormerken.")
-            return
-        self.run_task(Task(backend.open_steam), self.instance_started, launch=True)
 
     def poll(self):
         if self.poll_pending or self.shutting_down or self.quit_pending:
