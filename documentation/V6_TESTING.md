@@ -1,15 +1,22 @@
-# Wiz Q Launcher 6.0.4 Beta 2 testen
+# Wiz Q Launcher 6.0.4 Beta 3 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
 ## Download und Start
 
 1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **Beta** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
-2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.2.exe** herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten. [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.2)
+2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.3.exe** herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten. [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.3)
 3. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
 4. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
 Das Profil liegt normalerweise unter `%LOCALAPPDATA%\WizQLauncher`. Das Importieren verändert die alten Quelldateien nicht. Ein Launcher-Profil kann jeweils nur von einer laufenden Launcher-Instanz geöffnet werden.
+
+## Wizard101 auf einem anderen Laufwerk
+
+1. Unter **Einstellungen → Launcher & Regionen** die Region wählen und auf **Installationen suchen …** klicken. Wenn Windows mehrere Installationen kennt, den gewünschten Pfad wählen, zum Beispiel den auf `A:` statt der älteren Kopie auf `C:`.
+2. Bei einem individuell benannten, verschobenen Ordner den Pfad unter **DE · Spielordner → Auswählen …** von Hand wählen. Das Pfadfeld akzeptiert auch den `Bin`-Ordner oder die vollständige `WizardGraphicalClient.exe`.
+3. Bei der Meldung **Der Client ist nicht mehr aktuell** auf **Spiel aktualisieren** klicken. Der Assistent `Wizard101.exe` startet aus dem Spielordner der gewählten Region. Nach dem Patch den Assistenten schließen und über Quicklaunch starten.
+4. In der Statuszeile oder ihrem Tooltip prüfen, von welchem Pfad der Q-Launcher die Instanz geöffnet hat.
 
 ## Leeres Standardprofil einrichten
 
@@ -21,7 +28,7 @@ Das Profil liegt normalerweise unter `%LOCALAPPDATA%\WizQLauncher`. Das Importie
 Der bisherige Profilordner kann mit dem üblichen Tresorschutz weiter geöffnet werden. Den folgenden PowerShell-Befehl im Ordner der EXE ausführen.
 
 ```powershell
-.\WizQLauncher-v6.0.4-beta.2.exe --profile "$env:LOCALAPPDATA\WizQLauncher"
+.\WizQLauncher-v6.0.4-beta.3.exe --profile "$env:LOCALAPPDATA\WizQLauncher"
 ```
 
 ## Fensterverhalten und Einstellungen

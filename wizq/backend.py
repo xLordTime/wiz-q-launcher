@@ -12,10 +12,13 @@ from pathlib import Path
 
 import psutil
 
-from .settings import GAME_LANGUAGES, REGIONS, game_language, get
+from .game_install import CLIENT, PATCHER, install_folder, is_steam_install
+from .settings import GAME_LANGUAGES, game_language, get
 
-PROCESS_NAME = "wizardgraphicalclient.exe"
+PROCESS_NAME = CLIENT.name.casefold()
 STEAM_URI = "steam://run/799960"
+GAME_FOLDERS = "Einstellungen → Launcher & Regionen"
+GAME_UPDATE = GAME_FOLDERS + " → Spiel aktualisieren"
 
 # Only these fixed codes cross the worker boundary. Native exception strings
 # can contain arbitrary text and are never displayed, persisted or forwarded.
@@ -124,25 +127,6 @@ def window_rect(hwnd):
     return Win32Windows().rect(hwnd)
 
 
-def detect_installs():
-    found = {}
-    roots = [
-        Path(r"C:\ProgramData\KingsIsle Entertainment"),
-        Path(r"C:\Program Files (x86)\KingsIsle Entertainment"),
-        Path(r"C:\Program Files\KingsIsle Entertainment"),
-    ]
-    for root in roots:
-        if not root.is_dir():
-            continue
-        for folder in root.glob("Wizard101*"):
-            if not (folder / "Bin/WizardGraphicalClient.exe").is_file():
-                continue
-            suffix = folder.name.rsplit("(", 1)[-1].rstrip(")").lower()
-            region = suffix if suffix in REGIONS else "us"
-            found.setdefault(region, str(folder))
-    return found
-
-
 def open_steam():
     if sys.platform != "win32":
         raise RuntimeError("Der Steam-Start ist nur unter Windows möglich.")
@@ -154,9 +138,30 @@ def open_steam():
         ) from None
 
 
-def is_steam_install(path):
-    names = [part.casefold() for part in path.absolute().parts]
-    return ("steamapps", "common") in zip(names, names[1:])
+def selected_game_folder(store, region):
+    try:
+        folder = install_folder(get(store, "region_install_" + region))
+    except ValueError as exc:
+        raise ValueError(f"{region.upper()} · {exc} Öffne {GAME_FOLDERS}.") from None
+    if is_steam_install(folder):
+        raise ValueError(
+            "Dieser Spielordner liegt in einer Steam-Bibliothek. Wähle für diesen Account die Startmethode Über Steam "
+            "oder unter Launcher & Regionen den Spielordner der eigenständigen Installation."
+        )
+    return folder
+
+
+def open_game_patcher(store, region):
+    if sys.platform != "win32":
+        raise RuntimeError("Der Wizard101-Assistent benötigt Windows.")
+    patcher = selected_game_folder(store, region) / PATCHER
+    try:
+        if not patcher.is_file():
+            raise ValueError(f"Wizard101-Assistent fehlt unter {patcher}. Prüfe den Spielordner für {region.upper()}.")
+        os.startfile(str(patcher), cwd=str(patcher.parent))
+    except OSError as exc:
+        raise RuntimeError(f"Wizard101-Assistent konnte nicht geöffnet werden · {patcher}. {exc}") from None
+    return patcher
 
 
 def launch(store, vault, region, account=None, language=None):
@@ -166,36 +171,39 @@ def launch(store, vault, region, account=None, language=None):
         open_steam()
         return None
     language = game_language(store, region, language)
-    path = Path(get(store, "region_install_" + region))
-    if is_steam_install(path):
-        raise ValueError(
-            "Dieser Spielordner liegt in einer Steam-Bibliothek. Wähle für diesen Account die Startmethode Über Steam "
-            "oder unter Launcher & Regionen den Spielordner der eigenständigen Installation."
-        )
-    exe = path / "Bin/WizardGraphicalClient.exe"
-    if not exe.is_file():
-        raise ValueError(
-            f"Spielordner für {region.upper()} fehlt. Einstellungen → Launcher & Regionen öffnen."
-        )
+    path = selected_game_folder(store, region)
+    exe = path / CLIENT
     server, port = get(store, "region_server_" + region), get(store, "region_port_" + region)
-    native = native_module()
-    if native:
-        pid = native.launch(str(path), f"{server}:{port}", language)
-    else:
-        args = [str(exe), *launch_arguments(server, port, language)]
-        pid = subprocess.Popen(args, cwd=exe.parent).pid
-    created = psutil.Process(pid).create_time()
+    try:
+        if not exe.is_file():
+            raise ValueError(
+                f"{region.upper()} · Client fehlt unter {exe}. Prüfe den Pfad unter {GAME_FOLDERS} "
+                "oder öffne dort den Patch-Assistenten über Spiel aktualisieren."
+            )
+        native = native_module()
+        if native:
+            pid = native.launch(str(path), f"{server}:{port}", language)
+        else:
+            args = [str(exe), *launch_arguments(server, port, language)]
+            pid = subprocess.Popen(args, cwd=exe.parent).pid
+    except (OSError, RuntimeError) as exc:
+        raise RuntimeError(f"Client konnte nicht gestartet werden · {exe}. {exc}") from None
+    exited = f"Client vor dem Login beendet · {exe}. Bei einem veralteten Client öffne {GAME_UPDATE}."
+    try:
+        created = psutil.Process(pid).create_time()
+    except psutil.NoSuchProcess:
+        raise RuntimeError(exited) from None
     deadline, hwnd = time.monotonic() + get(store, "login_timeout"), None
     while time.monotonic() < deadline:
         if not alive(pid, created):
-            raise RuntimeError("Der gestartete Client wurde vor dem Login beendet.")
+            raise RuntimeError(exited)
         hwnd = next((h for h, p in window_handles() if p == pid), None)
         if hwnd:
             break
         time.sleep(0.2)
     if not hwnd:
         raise RuntimeError(
-            "Client gestartet, aber sein Fenster wurde nicht rechtzeitig gefunden. Kein anderer Client wurde verwendet."
+            f"Fenster des gestarteten Clients wurde nicht rechtzeitig gefunden · {exe}."
         )
     warning = None
     if account:
@@ -214,7 +222,7 @@ def launch(store, vault, region, account=None, language=None):
             else [sys.executable, str(Path(__file__).resolve().parent.parent / "main.py"), "--login-worker"]
         )
         if not alive(pid, created):
-            raise RuntimeError("Der Client wurde vor der Anmeldung beendet.")
+            raise RuntimeError(exited)
         try:
             result = subprocess.run(
                 command,
@@ -246,6 +254,7 @@ def launch(store, vault, region, account=None, language=None):
         "pid": pid,
         "created": created,
         "hwnd": hwnd,
+        "exe": str(exe),
         "region": region,
         "language": language,
         "account_id": account["id"] if account else None,

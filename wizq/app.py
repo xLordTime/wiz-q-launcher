@@ -349,12 +349,14 @@ class Window(DesktopShell, QMainWindow):
         return super().eventFilter(obj, event)
 
     def notice(self, text, transient=False):
-        self.status.setText(str(text)[:600])
+        text = str(text)[:600]
+        self.status.setText(text)
+        self.status.setToolTip(text)
         if transient:
             QTimer.singleShot(
                 3500,
                 lambda: (
-                    self.status.setText("Bereit · Daten lokal geschützt")
+                    self.notice("Bereit · Daten lokal geschützt")
                     if self.status.text() == text
                     else None
                 ),
@@ -511,14 +513,12 @@ class Window(DesktopShell, QMainWindow):
             self.sessions.start(
                 result["pid"], result["created"], result["hwnd"], result["region"], result["account_id"]
             )
-        self.notice(
-            result["warning"]
-            or (
-                "Client gestartet · Anmeldedaten eingegeben. Serveranmeldung im Spiel prüfen."
-                if result["account_id"]
-                else "Leere Instanz gestartet."
-            )
+        message = result["warning"] or (
+            "Client gestartet · Anmeldedaten eingegeben. Serveranmeldung im Spiel prüfen."
+            if result["account_id"]
+            else "Leere Instanz gestartet"
         )
+        self.notice(f"{message} · {result['exe']}")
         self.guard(lambda: self.window_manager.apply_saved(result))
         self.addons_page.emit_event("session.started", {"region": result["region"], "pid": result["pid"]})
         self.webhook("start", result["account_id"])

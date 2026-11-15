@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QInputDialog,
     QLineEdit,
     QListWidget,
     QProgressBar,
@@ -24,8 +25,9 @@ from PySide6.QtWidgets import (
 from . import backend, updates
 from .cloud import META
 from .cloud_profile import CHECKPOINT
+from .game_install import detect_installs
 from .paths import NEW_LOCAL_FOLDER
-from .settings import GAME_LANGUAGES, SETTING_CHOICES, SETTINGS, get, set_value
+from .settings import GAME_LANGUAGES, REGIONS, SETTING_CHOICES, SETTINGS, get, set_value
 from .storage import Store
 from .themes import catalog
 from .vault import Vault
@@ -56,6 +58,7 @@ class SettingsPage(QWidget):
         self.body.setContentsMargins(10, 0, 10, 10)
         self.body.setSpacing(12)
         self.rows, self.controls = [], {}
+        self.extra("Launcher & Regionen", self.install_actions(), "Spielordner Installationen suchen Spiel aktualisieren")
         for spec in SETTINGS:
             if spec.hidden:
                 continue
@@ -121,7 +124,6 @@ class SettingsPage(QWidget):
             content.addRow("", label(spec.help, muted=True))
             self.body.addWidget(card)
             self.rows.append((spec.section, spec.title + " " + spec.help + " " + spec.key, card))
-        self.extra("Launcher & Regionen", self.install_actions())
         window_card, window_layout = panel()
         window_layout.addWidget(label("Spielfenster", name="metric"))
         window_layout.addWidget(Button("Fenster anordnen und bearbeiten …", window.arrange_windows))
@@ -175,12 +177,13 @@ class SettingsPage(QWidget):
             set_value(self.window.store, key, value)
         except Exception as exc:
             self.window.notice("Nicht gespeichert: " + str(exc))
-            return
+            return False
         self.window.apply_settings({key})
         if key in ("show_navigation_tree", "show_launcher_toolbar"):
             with QSignalBlocker(self.controls[key]):
                 self.controls[key].setChecked(value)
         self.window.notice("Gespeichert", transient=True)
+        return True
 
     def refresh_window_settings(self):
         for key in ("window_layout", "window_mode", "window_gap", "window_margin"):
@@ -221,31 +224,65 @@ class SettingsPage(QWidget):
             else QFileDialog.getExistingDirectory(self, "Spielordner auswählen")
         )
         if path:
-            control.setText(str(Path(path)))
-            self.save(key, str(Path(path)))
+            path = str(Path(path))
+            if self.save(key, path):
+                control.setText(path)
 
     def install_actions(self):
         card, layout = panel()
-        layout.addWidget(label("Installationen erkennen", name="metric"))
+        layout.addWidget(label("Wizard101-Installation", name="metric"))
         layout.addWidget(
             label(
-                "Sucht in den üblichen KingsIsle-Ordnern. Vorhandene Pfade werden nicht überschrieben.",
+                "Wähle eine Region und die gewünschte Installation. Meldet Wizard101 einen veralteten Client, "
+                "öffnet Spiel aktualisieren den offiziellen Assistenten aus dem gespeicherten Spielordner.",
                 muted=True,
             )
         )
-        layout.addWidget(Button("Automatisch erkennen", self.detect))
+        regions = Combo()
+        regions.setAccessibleName("Serverregion für Installation und Spielupdate")
+        for code, name in REGIONS.items():
+            regions.addItem(f"{code.upper()} · {name}", code)
+        layout.addLayout(
+            row(
+                regions,
+                Button("Installationen suchen …", lambda: self.detect(regions.currentData())),
+                Button("Spiel aktualisieren", lambda: self.patch_game(regions.currentData())),
+            )
+        )
         return card
 
-    def detect(self):
+    def detect(self, region):
         def done(found):
-            for code, path in found.items():
-                key = "region_install_" + code
-                if not get(self.window.store, key):
-                    self.controls[key].setText(path)
-                    self.save(key, path)
-            self.window.notice(f"{len(found)} Installation(en) erkannt.")
+            if not found:
+                self.window.notice(
+                    f"Kein Spielordner gefunden. Öffne Auswählen … bei {region.upper()} · Spielordner."
+                )
+                return
+            options = list(map(str, found))
+            chosen, ok = QInputDialog.getItem(
+                self,
+                "Wizard101-Installation wählen",
+                f"Spielordner für {region.upper()}",
+                ["Spielordner auswählen …", *options],
+                0,
+                False,
+            )
+            if ok and chosen in options:
+                key = "region_install_" + region
+                if self.save(key, chosen):
+                    self.controls[key].setText(chosen)
+                    self.window.notice(f"{region.upper()} · Spielordner gewählt · {chosen}")
+            else:
+                self.window.notice("Spielordnersuche abgeschlossen.")
 
-        self.window.task(backend.detect_installs, done)
+        self.window.notice("Suche Wizard101 in der Windows-Registrierung und auf lokalen Laufwerken …")
+        self.window.task(detect_installs, done)
+
+    def patch_game(self, region):
+        self.window.task(
+            lambda: backend.open_game_patcher(self.window.store, region),
+            lambda path: self.window.notice(f"{region.upper()} · Wizard101-Assistent gestartet · {path}"),
+        )
 
     def security_actions(self):
         card, layout = panel()

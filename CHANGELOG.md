@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v6.0.4-beta.3
+
+- Find registered Wizard101 installations and common game folders on local drives, including A:. Choose the exact folder per region when several copies exist.
+- Accept an absolute game folder, its Bin folder, or the path to WizardGraphicalClient.exe. Show the executable used for Quicklaunch.
+- Open the official Wizard101 update assistant from the selected installation.
+
 ## v6.0.4-beta.2
 
 - Press F6 three times at a startup master password prompt or open Settings → Debug to set up an empty local profile under `%LOCALAPPDATA%\New-WizQ-Launcher`.

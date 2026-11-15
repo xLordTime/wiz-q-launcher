@@ -171,6 +171,7 @@ class DesktopShell:
         self.setCentralWidget(self.background)
         self.status = QLabel("Bereit · Daten lokal geschützt")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.statusBar().addWidget(self.status, 1)
         version = QLabel("Lokales Profil · Beta" if Version(__version__).is_prerelease else "Lokales Profil")
         version.setObjectName("versionStatus")

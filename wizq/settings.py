@@ -487,7 +487,8 @@ for code, title in REGIONS.items():
                 "Launcher & Regionen",
                 f"{code.upper()} · Spielordner",
                 "",
-                f"Installation für {title}; muss Bin/WizardGraphicalClient.exe enthalten. Über die Erkennung oder den Ordnerdialog auswählen.",
+                f"Installation für {title}. Wähle den Spielordner auf dem gewünschten Laufwerk. "
+                "Du kannst auch den Bin-Ordner oder den vollständigen Pfad zu WizardGraphicalClient.exe eintragen.",
             ),
             Setting(
                 "region_server_" + code,

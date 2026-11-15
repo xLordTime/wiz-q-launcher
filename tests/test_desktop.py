@@ -5,13 +5,14 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QInputDialog,
     QMessageBox,
     QSpinBox,
     QStyleOptionViewItem,
     QSystemTrayIcon,
 )
 
-from wizq.app import Window
+from wizq.app import Window, backend
 from wizq.cloud import new_code
 from wizq.desktop import Location
 from wizq.pages import AccountDialog
@@ -123,6 +124,41 @@ def test_debug_new_profile_requires_confirmation(desktop, tmp_path, monkeypatch)
     button.click()
     assert requests == [True]
     assert not Paths.new_local().root.exists()
+
+
+def test_install_picker_and_patcher_use_the_chosen_region(desktop, tmp_path, monkeypatch):
+    window, *_ = desktop
+    page = window.settings_page
+    old, current = (tmp_path / drive / "Wizard101(DE)" for drive in ("C", "A"))
+    window.store.set("region_install_de", str(old))
+    monkeypatch.setattr(window, "task", lambda fn, done: done(fn()))
+    monkeypatch.setattr("wizq.settings_page.detect_installs", lambda: [current, old])
+    choices = iter([(str(current), False), (str(current), True)])
+    patch_calls = []
+
+    def choose(_parent, _title, prompt, items, index, editable):
+        assert "DE" in prompt and index == 0 and not editable
+        assert items[1:] == [str(current), str(old)]
+        return next(choices)
+
+    def patch(store, code):
+        patch_calls.append((code, get(store, "region_install_" + code)))
+        return current / "Wizard101.exe"
+
+    monkeypatch.setattr(QInputDialog, "getItem", choose)
+    monkeypatch.setattr(backend, "open_game_patcher", patch)
+    window.go(Location(4, section="Launcher & Regionen"))
+    search = next(button for button in page.findChildren(Button) if button.text() == "Installationen suchen …")
+    update = next(button for button in page.findChildren(Button) if button.text() == "Spiel aktualisieren")
+    assert search.isVisible() and update.isVisible()
+    search.click()
+    assert get(window.store, "region_install_de") == str(old)
+    search.click()
+    assert get(window.store, "region_install_de") == str(current)
+    assert page.controls["region_install_de"].text() == str(current)
+    update.click()
+    assert patch_calls == [("de", str(current))]
+    assert str(current / "Wizard101.exe") in window.status.toolTip()
 
 
 @pytest.mark.parametrize(

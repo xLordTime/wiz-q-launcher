@@ -1,11 +1,14 @@
 import ctypes
 import io
 import json
+import os
+import subprocess
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 
 import pytest
 
-from wizq import backend
+from wizq import backend, game_install
 from wizq.settings import GAME_LANGUAGES, REGIONS, game_language, get, set_value
 
 
@@ -75,6 +78,52 @@ def test_direct_launch_identifies_a_steam_library_before_starting(launch_environ
         backend.launch(store, vault, "de")
 
 
+@pytest.mark.parametrize("suffix", ("", r"\Bin", r"\Bin\WizardGraphicalClient.exe"))
+def test_install_path_keeps_a_drive_and_accepts_bin_or_client(monkeypatch, suffix):
+    monkeypatch.setattr(game_install, "Path", PureWindowsPath)
+    folder = r"A:\Spiele mit Leerzeichen\Wizard101(DE)"
+    assert game_install.install_folder(f'"{folder}{suffix}"') == PureWindowsPath(folder)
+    with pytest.raises(ValueError, match="vollständigen Spielpfad"):
+        game_install.install_folder(r"A:Wizard101(DE)")
+
+
+def test_install_detection_keeps_both_copies_and_finds_registered_custom_path(monkeypatch, tmp_path):
+    other_drive, system_drive = (tmp_path / letter for letter in ("A", "C"))
+    current = other_drive / "Spiele" / "Wizard101(DE)"
+    old = system_drive / "ProgramData" / "KingsIsle Entertainment" / "Wizard101(DE)"
+    steam = other_drive / "Library" / "steamapps" / "common" / "Wizard101"
+    registered = other_drive / "Benutzerdefiniert" / "MMOs" / "Anderer Name"
+    for folder in (old, current, steam):
+        client = folder / game_install.CLIENT
+        client.parent.mkdir(parents=True)
+        client.touch()
+    registered.mkdir(parents=True)
+    (registered / game_install.PATCHER).touch()
+    for name in ("ProgramData", "ProgramFiles", "ProgramFiles(x86)"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(game_install, "local_drives", lambda: [other_drive, system_drive])
+    monkeypatch.setattr(game_install, "registered_folders", lambda: [old / "Bin", registered, steam])
+    assert game_install.detect_installs() == [registered, current, old]
+
+
+@pytest.mark.skipif(
+    os.name != "nt" or os.getenv("GITHUB_ACTIONS") != "true", reason="Uses a temporary A: drive on Windows CI"
+)
+def test_install_detection_finds_a_real_windows_drive_letter(tmp_path):
+    if "A:\\" in (drive.upper() for drive in os.listdrives()):
+        pytest.skip("A: is already assigned")
+    folder = Path(r"A:\Spiele\Wizard101(DE)")
+    client = folder / game_install.CLIENT
+    subprocess.run(["subst", "A:", str(tmp_path)], check=True, capture_output=True)
+    try:
+        client.parent.mkdir(parents=True)
+        client.touch()
+        assert folder in game_install.detect_installs()
+        assert game_install.install_folder(client) == folder
+    finally:
+        subprocess.run(["subst", "A:", "/d"], check=True, capture_output=True)
+
+
 @pytest.fixture
 def launch_environment(profile, monkeypatch, tmp_path):
     _, store, vault = profile
@@ -93,6 +142,8 @@ def launch_environment(profile, monkeypatch, tmp_path):
 @pytest.mark.parametrize("language", GAME_LANGUAGES)
 def test_native_and_plain_quicklaunch_use_same_language(launch_environment, monkeypatch, native, language):
     store, vault, install = launch_environment
+    stored = install / ("Bin" if native else game_install.CLIENT)
+    store.set("region_install_de", f'"{stored}"')
     calls = []
     module = SimpleNamespace(launch=lambda *args: calls.append(args) or 42) if native else None
     monkeypatch.setattr(backend, "native_module", lambda: module)
@@ -104,6 +155,7 @@ def test_native_and_plain_quicklaunch_use_same_language(launch_environment, monk
     result = backend.launch(store, vault, "de", language=language)
     assert result["language"] == language
     assert result["region"] == "de" and result["hwnd"] == 123
+    assert result["exe"] == str(install / game_install.CLIENT)
     if native:
         assert calls == [(str(install), "login-de.eu.wizard101.com:12000", language)]
     else:
@@ -113,6 +165,33 @@ def test_native_and_plain_quicklaunch_use_same_language(launch_environment, monk
             *backend.launch_arguments("login-de.eu.wizard101.com", 12000, language),
         ]
         assert kwargs["cwd"] == install / "Bin"
+
+
+def test_patcher_opens_from_the_configured_install_even_if_the_client_is_missing(
+    launch_environment, monkeypatch
+):
+    store, vault, install = launch_environment
+    (install / game_install.CLIENT).unlink()
+    patcher = install / game_install.PATCHER
+    patcher.touch()
+    calls = []
+    store.set("region_install_de", str(install / "Bin"))
+    monkeypatch.setattr(backend.os, "startfile", lambda *args, **kwargs: calls.append((args, kwargs)), raising=False)
+    monkeypatch.setattr(backend, "native_module", lambda: pytest.fail("Missing client must prevent launch"))
+    with pytest.raises(ValueError, match="Spiel aktualisieren") as error:
+        backend.launch(store, vault, "de")
+    assert str(install / game_install.CLIENT) in str(error.value)
+    assert backend.open_game_patcher(store, "de") == patcher
+    assert calls == [((str(patcher),), {"cwd": str(install)})]
+
+
+def test_early_client_exit_reports_the_executable_and_patch_action(launch_environment, monkeypatch):
+    store, vault, install = launch_environment
+    monkeypatch.setattr(backend, "native_module", lambda: SimpleNamespace(launch=lambda *_: 42))
+    monkeypatch.setattr(backend, "alive", lambda *_: False)
+    with pytest.raises(RuntimeError, match="vor dem Login beendet.*Spiel aktualisieren") as error:
+        backend.launch(store, vault, "de")
+    assert str(install / game_install.CLIENT) in str(error.value)
 
 
 @pytest.mark.parametrize("native", [True, False])
