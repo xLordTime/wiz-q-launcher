@@ -13,6 +13,7 @@ from pathlib import Path
 import psutil
 
 from .game_install import CLIENT, PATCHER, install_folder, is_steam_install
+from .launch_methods import LAUNCH_METHOD_PATH_PREFIX, client_path, launch_method
 from .settings import GAME_LANGUAGES, game_language, get, login_endpoint
 
 PROCESS_NAME = CLIENT.name.casefold()
@@ -155,18 +156,41 @@ def open_game_patcher(store, region):
 def launch(store, vault, region, account=None, language=None, *, steam=False):
     if sys.platform != "win32":
         raise RuntimeError("Der Spielstart ist nur unter Windows möglich.")
-    steam = steam or bool(account and account.get("steam"))
-    language = game_language(store, region, language)
-    path = selected_game_folder(store, region, allow_steam_library=steam)
-    exe = path / CLIENT
-    server, port = login_endpoint(store, region, steam=steam)
+    method_id = account.get("launch_method_id") if account else None
+    with store.lock:
+        method = launch_method(store, method_id) if method_id else None
+        if method_id and method is None:
+            raise ValueError(f"{account['nickname']} · Die Startmethode fehlt. Wähle sie in den Account-Eigenschaften neu.")
+        if method:
+            region, steam = method.region, method.steam
+            custom_path = store.get(LAUNCH_METHOD_PATH_PREFIX + method.id, "")
+        else:
+            steam = steam or bool(account and account.get("steam"))
+        language = game_language(store, region, language)
+        server, port = login_endpoint(store, region, steam=steam)
+    if method:
+        caption = f"Startmethode „{method.name}“"
+        location = f"{GAME_FOLDERS} → Startmethoden verwalten"
+        if not custom_path:
+            raise ValueError(f"{caption} · Wähle unter {location} die Clientdatei für diesen PC.")
+        exe = client_path(custom_path)
+        if is_steam_install(exe.parent) and not steam:
+            raise ValueError(f"{caption} · Wähle für diese Steam-Installation den Modus Steam-Direktstart.")
+        path = None
+        missing = f"{caption} · Client fehlt unter {exe}. Prüfe den Pfad unter {location}."
+        patch_help = "Aktualisiere bei einem veralteten Client die gewählte Installation."
+    else:
+        path = selected_game_folder(store, region, allow_steam_library=steam)
+        exe = path / CLIENT
+        missing = (
+            f"{region.upper()} · Client fehlt unter {exe}. Prüfe den Pfad unter {GAME_FOLDERS} "
+            "oder öffne dort den Patch-Assistenten über Spiel aktualisieren."
+        )
+        patch_help = f"Bei einem veralteten Client öffne {GAME_UPDATE}."
     try:
         if not exe.is_file():
-            raise ValueError(
-                f"{region.upper()} · Client fehlt unter {exe}. Prüfe den Pfad unter {GAME_FOLDERS} "
-                "oder öffne dort den Patch-Assistenten über Spiel aktualisieren."
-            )
-        native = native_module()
+            raise ValueError(missing)
+        native = native_module() if path else None
         if native:
             pid = native.launch(str(path), f"{server}:{port}", language)
         else:
@@ -174,7 +198,7 @@ def launch(store, vault, region, account=None, language=None, *, steam=False):
             pid = subprocess.Popen(args, cwd=exe.parent).pid
     except (OSError, RuntimeError) as exc:
         raise RuntimeError(f"Client konnte nicht gestartet werden · {exe}. {exc}") from None
-    exited = f"Client vor dem Login beendet · {exe}. Bei einem veralteten Client öffne {GAME_UPDATE}."
+    exited = f"Client vor dem Login beendet · {exe}. {patch_help}"
     try:
         created = psutil.Process(pid).create_time()
     except psutil.NoSuchProcess:
@@ -194,46 +218,18 @@ def launch(store, vault, region, account=None, language=None, *, steam=False):
     warning = None
     if account and not steam:
         credentials = store.credentials(vault, account["id"])
-        ready_timeout = get(store, "login_ready_timeout")
-        payload = {
-            "hwnd": hwnd,
-            "pid": pid,
-            "created": created,
-            "ready_timeout": ready_timeout,
-            **credentials,
-        }
-        command = (
-            [sys.executable, "--login-worker"]
-            if getattr(sys, "frozen", False)
-            else [sys.executable, str(Path(__file__).resolve().parent.parent / "main.py"), "--login-worker"]
-        )
-        if not alive(pid, created):
-            raise RuntimeError(exited)
-        try:
-            result = subprocess.run(
-                command,
-                input=json.dumps(payload),
-                text=True,
-                capture_output=True,
-                timeout=ready_timeout + 20,
-                creationflags=0x08000000,
-                encoding="utf-8",
+        if credentials["username"].strip() and credentials["password"]:
+            if not alive(pid, created):
+                raise RuntimeError(exited)
+            warning = run_autologin(
+                hwnd, pid, created, get(store, "login_ready_timeout"), credentials
             )
-            if result.returncode:
-                code = "worker_crash"
-                try:
-                    reply = json.loads(result.stdout[:4096])
-                    if isinstance(reply, dict) and reply.get("code") in LOGIN_ERRORS:
-                        code = reply["code"]
-                except (ValueError, TypeError):
-                    pass
-                warning = f"Autologin [{code}]: {LOGIN_ERRORS[code]} Das Fenster bleibt für die manuelle Anmeldung offen."
-        except subprocess.TimeoutExpired:
-            warning = f"Autologin [worker_timeout]: {LOGIN_ERRORS['worker_timeout']} Das Fenster bleibt offen; Anmeldung prüfen."
-        except OSError:
-            warning = f"Autologin [worker_crash]: {LOGIN_ERRORS['worker_crash']} Das Fenster bleibt für die manuelle Anmeldung offen."
-        finally:
-            del credentials, payload
+        else:
+            warning = (
+                "Autologin · Ergänze die Zugangsdaten in den Account-Eigenschaften. "
+                "Das Fenster bleibt für die manuelle Anmeldung offen."
+            )
+        del credentials
     if account and get(store, "set_window_title"):
         set_title(hwnd, account["nickname"])
     return {
@@ -244,10 +240,41 @@ def launch(store, vault, region, account=None, language=None, *, steam=False):
         "region": region,
         "language": language,
         "steam": steam,
+        "launch_method_name": method.name if method else None,
         "login_endpoint": f"{server}:{port}",
         "account_id": account["id"] if account else None,
         "warning": warning,
     }
+
+
+def run_autologin(hwnd, pid, created, ready_timeout, credentials):
+    payload = {"hwnd": hwnd, "pid": pid, "created": created, "ready_timeout": ready_timeout, **credentials}
+    command = (
+        [sys.executable, "--login-worker"]
+        if getattr(sys, "frozen", False)
+        else [sys.executable, str(Path(__file__).resolve().parent.parent / "main.py"), "--login-worker"]
+    )
+    try:
+        result = subprocess.run(
+            command,
+            input=json.dumps(payload),
+            text=True,
+            capture_output=True,
+            timeout=ready_timeout + 20,
+            creationflags=0x08000000,
+            encoding="utf-8",
+        )
+        if not result.returncode:
+            return None
+        reply = json.loads(result.stdout[:4096])
+        code = reply.get("code") if isinstance(reply, dict) else None
+        if code not in LOGIN_ERRORS:
+            code = "worker_crash"
+    except subprocess.TimeoutExpired:
+        code = "worker_timeout"
+    except (OSError, ValueError, TypeError):
+        code = "worker_crash"
+    return f"Autologin [{code}]: {LOGIN_ERRORS[code]} Das Fenster bleibt für die manuelle Anmeldung offen."
 
 
 def login_worker():

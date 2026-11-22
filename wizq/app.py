@@ -33,6 +33,7 @@ from . import __version__, backend, updates
 from .addon_pages import AddonsPage
 from .desktop import DesktopShell
 from .hotkeys import Hotkeys
+from .launch_method_dialog import LaunchMethodsDialog
 from .launch_page import LaunchPage
 from .migration import legacy_sources, migrate
 from .pages import AccountsPage, HelpPage, PlaytimePage
@@ -404,6 +405,12 @@ class Window(DesktopShell, QMainWindow):
         self.refresh_navigation()
         self.playtime_page.refresh()
 
+    def manage_launch_methods(self, parent=None):
+        dialog = LaunchMethodsDialog(parent or self, self.store)
+        dialog.exec()
+        if dialog.changed:
+            self.refresh_accounts()
+
     def ensure_unlocked(self):
         if self.vault.key is None and not unlock(self.vault, self):
             return False
@@ -511,7 +518,9 @@ class Window(DesktopShell, QMainWindow):
                 if result["account_id"]
                 else "Leere Instanz gestartet"
             )
-        self.notice(f"{message} · {result['exe']}")
+        method = result.get("launch_method_name")
+        prefix = f"{method} · " if method else ""
+        self.notice(f"{prefix}{message} · {result['exe']}")
         self.guard(lambda: self.window_manager.apply_saved(result))
         self.addons_page.emit_event("session.started", {"region": result["region"], "pid": result["pid"]})
         self.webhook("start", result["account_id"])

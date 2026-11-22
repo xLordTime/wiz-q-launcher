@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v6.0.4-beta.5
+
+- Create and manage named start methods with a Wizard101 executable, EU or North American server profile, and standard or Steam direct start. Assign them in account properties.
+- Sync method definitions and account assignments while configuring each computer's executable path locally.
+
 ## v6.0.4-beta.4
 
 - Start Steam-marked profiles directly in the game client with a separate, editable login address per region.

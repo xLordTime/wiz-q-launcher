@@ -1,11 +1,11 @@
-# Wiz Q Launcher 6.0.4 Beta 4 testen
+# Wiz Q Launcher 6.0.4 Beta 5 testen
 
 Diese Version enthält die neue native Explorer-Oberfläche. Die Windows-EXE enthält Python, Qt und den nativen Launcher-Adapter; eine separate Python-/Rust-Installation ist nicht nötig.
 
 ## Download und Start
 
 1. Im vorhandenen 6.0-Launcher **Einstellungen → Updates** öffnen und im Kanal **Beta** nach Updates suchen. Herunterladen und **Neustarten & anwenden** wählen.
-2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.4.exe** herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten. [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.4)
+2. Für den eigenständigen Start **WizQLauncher-v6.0.4-beta.5.exe** herunterladen. Den bisherigen Launcher über **Beenden** vollständig schließen und die neue EXE starten. [Release](https://github.com/xLordTime/wiz-q-launcher/releases/tag/v6.0.4-beta.5)
 3. Beim ersten 6.0-Start den Tresorschutz wählen und ein gefundenes 5.x-Profil übernehmen. Für ein vorhandenes 6.0-Profil werden die bisherigen Daten und der bisherige Schutzmodus verwendet.
 4. Unter **Einstellungen → Launcher & Regionen** die Spielordner prüfen. Ein Spielordner enthält `Bin/WizardGraphicalClient.exe`.
 
@@ -18,6 +18,13 @@ Das Profil liegt normalerweise unter `%LOCALAPPDATA%\WizQLauncher`. Das Importie
 3. Bei der Meldung **Der Client ist nicht mehr aktuell** auf **Spiel aktualisieren** klicken. Der Assistent `Wizard101.exe` startet aus dem Spielordner der gewählten Region. Nach dem Patch den Assistenten schließen und über Quicklaunch starten.
 4. In der Statuszeile oder ihrem Tooltip prüfen, von welchem Pfad der Q-Launcher die Instanz geöffnet hat.
 
+## Eigene Startmethoden
+
+1. Unter **Einstellungen → Launcher & Regionen → Startmethoden verwalten … → Neu …** eine EU-Methode und eine NA-Methode erstellen. Jeweils die gewünschte `WizardGraphicalClient.exe` auswählen und die angezeigte Loginadresse prüfen.
+2. In den **Account-Eigenschaften** die Methode auswählen. Für einen einzelnen Start und für die Mehrfachauswahl prüfen, ob jeder Account die richtige EXE und Loginadresse verwendet. **Direkt (Wiz Q)** nutzt den Autologin. **Steam-Direktstart** öffnet die manuelle Anmeldung.
+3. Eine verknüpfte Methode umbenennen. Den Launcher neu starten und prüfen, ob der Account die Methode unter ihrem neuen Namen behält. Zum Löschen zuerst den betreffenden Accounts eine andere Methode zuweisen.
+4. Auf einem zweiten, bereits verknüpften PC die synchronisierte Methode öffnen und dort die Clientdatei auswählen. Beim nächsten Abgleich die lokalen Pfade beider PCs prüfen.
+
 ## Leeres Standardprofil einrichten
 
 1. Beim Start im Masterpasswortdialog dreimal **F6** drücken. Das funktioniert bei der ersten Tresoreinrichtung, beim Entsperren eines Profils und bei der Passwortabfrage für die 5.x-Datenübernahme.
@@ -28,7 +35,7 @@ Das Profil liegt normalerweise unter `%LOCALAPPDATA%\WizQLauncher`. Das Importie
 Der bisherige Profilordner kann mit dem üblichen Tresorschutz weiter geöffnet werden. Den folgenden PowerShell-Befehl im Ordner der EXE ausführen.
 
 ```powershell
-.\WizQLauncher-v6.0.4-beta.4.exe --profile "$env:LOCALAPPDATA\WizQLauncher"
+.\WizQLauncher-v6.0.4-beta.5.exe --profile "$env:LOCALAPPDATA\WizQLauncher"
 ```
 
 ## Fensterverhalten und Einstellungen
@@ -91,7 +98,7 @@ Beim Verbinden werden vorhandene Daten ergänzt. Bei einer bereits im Cloud-Prof
 
 Die automatischen Tests prüfen Datenhaltung, Navigation und den gepackten Windows-Start einschließlich EXE-Austausch. Eine erfolgreiche Anmeldung an den aktuell installierten DE-/US-Spielclients kann nur mit diesen Clients geprüft werden.
 
-## Fensterverwaltung in Beta 5
+## Fensterverwaltung
 
 1. **Launch → Laufende Instanzen → Anordnen …** öffnen, die betroffenen Fenster ankreuzen und ihre Reihenfolge per Drag & Drop bestimmen. Der erste Client wird zum Hauptfenster.
 2. Einen Zielmonitor oder **Alle Monitore** wählen. Raster, Hauptfenster links/rechts/oben, Kaskade und Monitor füllen ausprobieren. Abstand, Bildschirmrand, Taskleistenfläche und Hauptfensteranteil prüfen.

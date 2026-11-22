@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import sqlite3
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -26,8 +26,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .launch_methods import LAUNCH_METHOD_PATH_PREFIX, MODE_NAMES, launch_methods
 from .sessions import duration
-from .settings import REGIONS, SETTING_CHOICES, SETTINGS, get
+from .settings import REGIONS, SETTING_CHOICES, SETTINGS, get, login_endpoint
 from .widgets import Button, Combo, label, row
 
 ROLE = Qt.ItemDataRole.UserRole
@@ -54,19 +55,26 @@ class AccountDialog(QDialog):
         self.nick, self.user, self.password = QLineEdit(), QLineEdit(), QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.region, self.group = Combo(), Combo()
-        self.steam = Combo()
-        self.steam.addItem("Direkt (Wiz Q)", False)
-        self.steam.addItem("Steam-Direktstart", True)
-        self.steam.setAccessibleName("Startmethode")
+        self.method = Combo()
+        self.method.setAccessibleName("Startmethode")
+        self.method.setSizeAdjustPolicy(Combo.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.method.setMinimumContentsLength(16)
+        manage = Button("Verwalten …", self.manage_methods)
+        manage.setAccessibleName("Startmethoden verwalten")
+        manage.setAutoDefault(False)
+        method_row = row(self.method, manage)
+        method_row.setStretch(0, 1)
         for code, name in REGIONS.items():
             self.region.addItem(f"{code.upper()} · {name}", code)
         self.group.addItem("Ohne Gruppe", None)
         for g in window.store.query("SELECT * FROM groups ORDER BY position"):
             self.group.addItem(g["name"], g["id"])
-        self.region.setCurrentIndex(self.region.findData(get(window.store, "current_region")))
+        self.default_region = account.get("default_region", account["region"]) if account else get(
+            window.store, "current_region"
+        )
         for title, control in (
             ("Nickname", self.nick),
-            ("Startmethode", self.steam),
+            ("Startmethode", method_row),
             ("Username", self.user),
             ("Passwort", self.password),
             ("Region", self.region),
@@ -96,46 +104,84 @@ class AccountDialog(QDialog):
         layout.addLayout(
             row(Button("Abbrechen", self.reject), Button("Account speichern", self.save, primary=True))
         )
+        selected = False
         if account:
             credentials = window.store.credentials(window.vault, account["id"])
             self.nick.setText(account["nickname"])
             self.user.setText(credentials["username"])
             self.password.setText(credentials["password"])
-            self.region.setCurrentIndex(self.region.findData(account["region"]))
             self.group.setCurrentIndex(max(0, self.group.findData(account["group_id"])))
-            self.steam.setCurrentIndex(int(bool(account.get("steam"))))
+            selected = account.get("launch_method_id") or bool(account.get("steam"))
             layout.addWidget(
                 Button(
                     "Fenster-Startvorgabe bearbeiten …", lambda: window.open_window_editor(account=account)
                 )
             )
-        self.steam.currentIndexChanged.connect(self.update_login_method)
+        self.method.currentIndexChanged.connect(self.update_login_method)
+        self.region.currentIndexChanged.connect(self.remember_region)
+        self.refresh_methods(selected)
+
+    def manage_methods(self):
+        selected = self.method.currentData()
+        self.window.manage_launch_methods(self)
+        self.refresh_methods(selected)
+
+    def refresh_methods(self, selected):
+        self.methods = launch_methods(self.window.store)
+        with QSignalBlocker(self.method):
+            self.method.clear()
+            for steam, title in MODE_NAMES.items():
+                self.method.addItem(title, steam)
+            for method in sorted(self.methods.values(), key=lambda value: value.name.casefold()):
+                self.method.addItem(f"{method.name} · {method.region.upper()}", method.id)
+            if isinstance(selected, str) and selected not in self.methods:
+                self.method.addItem("Startmethode fehlt", selected)
+            self.method.setCurrentIndex(max(0, self.method.findData(selected)))
         self.update_login_method()
 
+    def remember_region(self):
+        self.default_region = self.region.currentData()
+
     def update_login_method(self):
-        steam = self.steam.currentData()
+        selected = self.method.currentData()
+        method = self.methods.get(selected)
+        region = method.region if method else self.default_region
+        with QSignalBlocker(self.region):
+            self.region.setCurrentIndex(self.region.findData(region))
+        custom = isinstance(selected, str)
+        self.region.setEnabled(not custom)
+        steam = method.steam if method else selected is True
         for widget in (self.user, self.password, self.visible_password):
             widget.setEnabled(not steam)
         if steam:
             self.visible_password.setChecked(False)
-        self.login_help.setText(
-            "Öffnet den Spielclient mit der Steam-Loginadresse deiner Region. Melde dich im Spiel mit einem "
-            "passenden Wizard101-Konto an. Reine Steam-Konten brauchen die Steam-Anmeldung."
+        help_text = (
+            "Öffnet den Spielclient mit der Steam-Loginadresse. Melde dich im Spielfenster an."
             if steam
             else "Wiz Q speichert deine Zugangsdaten verschlüsselt und gibt sie beim Direktstart ein."
         )
+        if method:
+            store = self.window.store
+            host, port = login_endpoint(store, region, steam=steam)
+            path = store.get(LAUNCH_METHOD_PATH_PREFIX + method.id, "")
+            help_text += f"\nLoginserver · {host}:{port}\n{path or 'Clientdatei über Verwalten … auswählen.'}"
+        elif custom:
+            help_text = "Diese Startmethode fehlt. Wähle eine andere oder öffne Verwalten …"
+        self.login_help.setText(help_text)
 
     def save(self):
+        method = self.method.currentData()
         try:
             self.window.store.save_account(
                 self.window.vault,
                 self.nick.text(),
                 self.user.text(),
                 self.password.text(),
-                self.region.currentData(),
+                self.default_region,
                 self.group.currentData(),
                 self.account["id"] if self.account else None,
-                steam=self.steam.currentData(),
+                steam=method if isinstance(method, bool) else None,
+                launch_method_id=method if isinstance(method, str) else None,
             )
             self.password.clear()
             self.accept()
@@ -404,6 +450,15 @@ ARTICLES = {
         "Im Spiel meldest du dich mit einem Wizard101-Konto an, das der gewählte Server akzeptiert. "
         "Steam- und Website-Konten sind bei KingsIsle getrennt. Für Figuren eines reinen Steam-Kontos "
         "benötigst du weiterhin die Steam-Anmeldung. [Wizard101-FAQ](https://eu.wizard101.com/game/help-faq)"
+    ),
+    "Eigene Startmethoden": (
+        "# Eigene Startmethoden\n\n"
+        "Öffne **Einstellungen → Launcher & Regionen → Startmethoden verwalten …** und klicke auf **Neu …**. "
+        "Vergib einen Namen, wähle das EU- oder NA-Serverprofil und suche die `WizardGraphicalClient.exe` "
+        "der gewünschten Installation aus. Der Startmodus bestimmt, ob Wiz Q den normalen Autologin "
+        "verwendet oder den Client mit der Steam-Loginadresse zur manuellen Anmeldung öffnet.\n\n"
+        "Wähle deine Methode unter **Account-Eigenschaften → Startmethode**. Du kannst sie mehreren Accounts "
+        "zuweisen. Bei Cloud-Synchronisierung hinterlegst du die Clientdatei auf jedem PC einmal."
     ),
     "Regionen & Autologin": (
         "# Regionen und Autologin\n\n"

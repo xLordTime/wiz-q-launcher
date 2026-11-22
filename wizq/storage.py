@@ -10,8 +10,11 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+from .launch_methods import ACCOUNT_LAUNCH_METHOD_PREFIX, launch_method, launch_methods
+
 SCHEMA = 1
 STEAM_ACCOUNT_PREFIX = "steam_account:"
+KEEP_LAUNCH_METHOD = object()
 
 
 class ProfileError(RuntimeError):
@@ -95,24 +98,49 @@ class Store:
             )
 
     def accounts(self):
-        return self.query(
-            "SELECT a.id,a.nickname,a.region,a.group_id,a.position,a.favorite,a.legacy_seconds,a.legacy_sessions,a.last_used,"
-            " COALESCE(SUM(s.elapsed),0)+a.legacy_seconds AS total_seconds,COUNT(s.id)+a.legacy_sessions AS session_count,"
-            " COALESCE(setting.value='true',0) AS steam FROM accounts a LEFT JOIN sessions s ON s.account_id=a.id"
-            " LEFT JOIN settings setting ON setting.key=?||a.id GROUP BY a.id ORDER BY a.position,a.nickname",
-            (STEAM_ACCOUNT_PREFIX,),
-        )
+        with self.lock:
+            accounts = self.query(
+                "SELECT a.id,a.nickname,a.region,a.group_id,a.position,a.favorite,a.legacy_seconds,a.legacy_sessions,a.last_used,"
+                " COALESCE(SUM(s.elapsed),0)+a.legacy_seconds AS total_seconds,COUNT(s.id)+a.legacy_sessions AS session_count,"
+                " COALESCE(mode.value='true',0) AS steam,route.value AS launch_method_id"
+                " FROM accounts a LEFT JOIN sessions s ON s.account_id=a.id"
+                " LEFT JOIN settings mode ON mode.key=?||a.id LEFT JOIN settings route ON route.key=?||a.id"
+                " GROUP BY a.id ORDER BY a.position,a.nickname",
+                (STEAM_ACCOUNT_PREFIX, ACCOUNT_LAUNCH_METHOD_PREFIX),
+            )
+            methods = launch_methods(self) if any(a["launch_method_id"] is not None for a in accounts) else {}
+        for account in accounts:
+            method_id = json.loads(account["launch_method_id"] or "null")
+            method_id = method_id if isinstance(method_id, str) else None
+            method = methods.get(method_id)
+            account["launch_method_id"] = method_id
+            account["launch_method_name"] = method.name if method else None
+            account["default_region"] = account["region"]
+            if method:
+                account["region"] = method.region
+                account["steam"] = method.steam
+        return accounts
 
     def save_account(
-        self, vault, nickname, username, password, region, group_id=None, account_id=None, *, steam=None
+        self, vault, nickname, username, password, region, group_id=None, account_id=None, *,
+        steam=None, launch_method_id=KEEP_LAUNCH_METHOD,
     ):
         if not nickname.strip():
             raise ValueError("Ein Nickname ist erforderlich.")
         account_id = account_id or str(uuid.uuid4())
-        key = STEAM_ACCOUNT_PREFIX + account_id
+        mode_key = STEAM_ACCOUNT_PREFIX + account_id
+        method_key = ACCOUNT_LAUNCH_METHOD_PREFIX + account_id
         with self.transaction() as db:
-            previous_mode = self.get(key, False)
+            previous_method = self.get(method_key)
+            if launch_method_id is KEEP_LAUNCH_METHOD:
+                launch_method_id = previous_method if steam is None else None
+            previous_mode = self.get(mode_key, False)
             mode = previous_mode if steam is None else bool(steam)
+            if launch_method_id is not None:
+                method = launch_method(self, launch_method_id)
+                if not method:
+                    raise ValueError("Die Startmethode fehlt. Wähle eine verfügbare Methode.")
+                mode = method.steam
             if not mode and (not username.strip() or not password):
                 raise ValueError("Für den Direktstart sind Username und Passwort erforderlich.")
             secret = vault.encrypt({"username": username, "password": password}, account_id)
@@ -122,13 +150,21 @@ class Store:
                 (account_id, nickname.strip(), region, secret, group_id, position),
             )
             if mode != previous_mode:
-                self.set(key, mode)
+                self.set(mode_key, mode)
+            if launch_method_id != previous_method:
+                if launch_method_id is None:
+                    db.execute("DELETE FROM settings WHERE key=?", (method_key,))
+                else:
+                    self.set(method_key, launch_method_id)
         return account_id
 
     def delete_account(self, account_id):
         with self.transaction() as db:
             db.execute("DELETE FROM accounts WHERE id=?", (account_id,))
-            db.execute("DELETE FROM settings WHERE key=?", (STEAM_ACCOUNT_PREFIX + account_id,))
+            db.execute(
+                "DELETE FROM settings WHERE key IN (?,?)",
+                (STEAM_ACCOUNT_PREFIX + account_id, ACCOUNT_LAUNCH_METHOD_PREFIX + account_id),
+            )
 
     def credentials(self, vault, account_id):
         rows = self.query("SELECT credentials FROM accounts WHERE id=?", (account_id,))

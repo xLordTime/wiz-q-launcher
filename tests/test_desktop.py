@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
 from wizq.app import Window, backend
 from wizq.cloud import new_code
 from wizq.desktop import Location
+from wizq.game_install import CLIENT
+from wizq.launch_method_dialog import LaunchMethodDialog, LaunchMethodsDialog
 from wizq.pages import AccountDialog
 from wizq.paths import Paths
 from wizq.selection import contrast, mix, selection_colors
@@ -409,7 +411,7 @@ def test_language_override_applies_to_accounts_and_empty_quicklaunch(desktop, mo
 def test_steam_account_can_be_saved_without_credentials_and_selected_with_locked_vault(desktop, monkeypatch):
     window, _, *_ = desktop
     dialog = AccountDialog(window)
-    dialog.steam.setCurrentIndex(dialog.steam.findData(True))
+    dialog.method.setCurrentIndex(dialog.method.findData(True))
     dialog.nick.setText("Steam Wizard")
     assert not dialog.user.isEnabled() and not dialog.password.isEnabled()
     dialog.save()
@@ -424,6 +426,49 @@ def test_steam_account_can_be_saved_without_credentials_and_selected_with_locked
     monkeypatch.setattr(window, "ensure_unlocked", lambda: pytest.fail("Steam does not unlock the vault"))
     window.launch_page.launch_selected()
     assert launched == [account]
+
+
+def test_account_properties_create_and_assign_named_start_method(desktop, monkeypatch, tmp_path):
+    window, _, _, _, ids = desktop
+    client = tmp_path / "Steam installation" / CLIENT
+    account = next(a for a in window.store.accounts() if a["id"] == ids[0])
+    dialog = AccountDialog(window, account)
+    managed = []
+
+    def fill(editor):
+        editor.name.setText("Steam NA auf A")
+        editor.region.setCurrentIndex(editor.region.findData("us"))
+        editor.mode.setCurrentIndex(editor.mode.findData(True))
+        editor.path.setText(str(client))
+        assert "login.us.wizard101.com:12000" in editor.endpoint.text()
+        editor.save()
+        return editor.result()
+
+    def manage(manager):
+        next(button for button in manager.findChildren(Button) if button.text() == "Neu …").click()
+        managed.append(manager.selected_method().id)
+        assert str(client) in manager.details.text()
+        manager.accept()
+        return manager.result()
+
+    monkeypatch.setattr(LaunchMethodDialog, "exec", fill)
+    monkeypatch.setattr(LaunchMethodsDialog, "exec", manage)
+    next(button for button in dialog.findChildren(Button) if button.text() == "Verwalten …").click()
+    (method_id,) = managed
+    dialog.method.setCurrentIndex(dialog.method.findData(method_id))
+    assert dialog.method.currentText() == "Steam NA auf A · US"
+    assert dialog.region.currentData() == "us" and not dialog.region.isEnabled()
+    assert not dialog.password.isEnabled()
+    dialog.method.setCurrentIndex(dialog.method.findData(False))
+    assert dialog.region.currentData() == "de" and dialog.region.isEnabled()
+    dialog.method.setCurrentIndex(dialog.method.findData(method_id))
+    dialog.save()
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    saved = next(a for a in window.store.accounts() if a["id"] == account["id"])
+    assert saved["launch_method_id"] == method_id and saved["region"] == "us"
+    assert window.store.credentials(window.vault, account["id"]) == {
+        "username": "synthetic-user", "password": "synthetic-password",
+    }
 
 
 def test_steam_menu_starts_directly_with_selected_region_and_language(desktop, monkeypatch):

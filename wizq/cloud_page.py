@@ -20,7 +20,9 @@ from PySide6.QtWidgets import (
 
 from .cloud import CloudSync, new_code
 from .cloud_files import CLOUD_DIRECTORY
+from .launch_methods import ACCOUNT_LAUNCH_METHOD_PREFIX, LAUNCH_METHOD_PREFIX
 from .settings import get
+from .storage import STEAM_ACCOUNT_PREFIX
 from .widgets import Button, Task, label, row
 
 
@@ -65,7 +67,7 @@ class CloudPage(QWidget):
         layout.addWidget(self.automatic_box)
         layout.addWidget(
             label(
-                "Accounts, Gruppen, Spielzeit, Einstellungen, Start- und Fensterprofile sowie Themes, Add-on-Dateien und Aufnahmen wandern mit. "
+                "Accounts, Gruppen, Spielzeit, Einstellungen, Startmethoden, Start- und Fensterprofile sowie Themes, Add-on-Dateien und Aufnahmen wandern mit. "
                 "Spiel- und FFmpeg-Pfade sowie Aufnahmegeräte richtest du auf jedem PC ein.",
                 muted=True,
             )
@@ -287,12 +289,17 @@ class CloudPage(QWidget):
         )
         if selection_changed:
             window.launch_page.checked = set(window.store.get("last_launch_selection", []))
-        if any(key.startswith(("accounts/", "groups/")) for key in changed):
+        accounts_changed = any(key.startswith(("accounts/", "groups/")) for key in changed)
+        method_keys = tuple(
+            "settings/" + prefix for prefix in (LAUNCH_METHOD_PREFIX, ACCOUNT_LAUNCH_METHOD_PREFIX, STEAM_ACCOUNT_PREFIX)
+        )
+        if accounts_changed:
             with window.store.lock:
                 ids = {account["id"] for account in window.store.accounts()}
                 for state in window.sessions.live.values():
                     if state["account_id"] not in ids:
                         state["account_id"] = None
+        if accounts_changed or any(key.startswith(method_keys) for key in changed):
             window.refresh_accounts()
         else:
             if any(key.startswith("launch_profiles/") for key in changed):

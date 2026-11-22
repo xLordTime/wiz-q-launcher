@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from wizq import backend, game_install
+from wizq.launch_methods import save_launch_method
 from wizq.settings import GAME_LANGUAGES, REGIONS, game_language, get, set_value
 
 
@@ -110,6 +111,62 @@ def test_direct_launch_identifies_a_steam_library_before_starting(launch_environ
     monkeypatch.setattr(backend, "native_module", lambda: pytest.fail("No direct launch expected"))
     with pytest.raises(ValueError, match="Steam-Direktstart"):
         backend.launch(store, vault, "de")
+
+
+@pytest.mark.parametrize(
+    ("region", "steam", "host"),
+    [
+        ("de", True, "login-en.eu.wizard101.com"),
+        ("de", False, "login-de.eu.wizard101.com"),
+        ("us", True, "login.us.wizard101.com"),
+        ("us", False, "login.us.wizard101.com"),
+    ],
+)
+def test_custom_method_uses_exact_client_and_server_profile(launch_environment, monkeypatch, tmp_path, region, steam, host):
+    store, vault, _ = launch_environment
+    client = tmp_path / "Other drive with spaces" / game_install.CLIENT.name
+    client.parent.mkdir()
+    client.touch()
+    method_id = save_launch_method(store, "Eigene Installation", region, steam, str(client))
+    other_region = "us" if region == "de" else "de"
+    ident = store.save_account(
+        vault, "Wizard", "user", "password", other_region, launch_method_id=method_id
+    )
+    (account,) = store.accounts()
+    assert account["region"] == region and account["default_region"] == other_region
+    starts, autologins = [], []
+    monkeypatch.setattr(backend, "native_module", lambda: pytest.fail("Native launcher uses the standard path"))
+    monkeypatch.setattr(backend, "set_title", lambda *_: None)
+    monkeypatch.setattr(
+        backend.subprocess, "Popen", lambda args, **options: starts.append((args, options)) or SimpleNamespace(pid=42)
+    )
+    monkeypatch.setattr(
+        backend, "run_autologin", lambda *args: autologins.append(args) or None
+    )
+    if steam:
+        vault.lock()
+    result = backend.launch(store, vault, other_region, account)
+    args = [str(client), "-L", host, "12000"]
+    if region == "de":
+        args += ["-A", "de"]
+    assert starts == [(args, {"cwd": client.parent})]
+    assert result["account_id"] == ident and result["region"] == region
+    assert result["launch_method_name"] == "Eigene Installation"
+    assert result["login_endpoint"] == f"{host}:12000"
+    assert bool(autologins) == (not steam)
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_custom_method_never_falls_back_to_another_installation(launch_environment, monkeypatch, tmp_path, configured):
+    store, vault, _ = launch_environment
+    missing = str(tmp_path / "Missing" / game_install.CLIENT.name)
+    method_id = save_launch_method(store, "A-Laufwerk", "de", False, missing if configured else "")
+    store.save_account(vault, "Wizard", "user", "password", "de", launch_method_id=method_id)
+    (account,) = store.accounts()
+    monkeypatch.setattr(backend, "native_module", lambda: pytest.fail("No standard launch expected"))
+    monkeypatch.setattr(backend.subprocess, "Popen", lambda *_: pytest.fail("No client start expected"))
+    with pytest.raises(ValueError, match="A-Laufwerk.*(" + ("Client fehlt" if configured else "Clientdatei") + ")"):
+        backend.launch(store, vault, "de", account)
 
 
 @pytest.mark.parametrize("suffix", ("", r"\Bin", r"\Bin\WizardGraphicalClient.exe"))

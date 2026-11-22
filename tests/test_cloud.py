@@ -7,6 +7,14 @@ import pytest
 
 from wizq.cloud import CloudError, CloudSync, new_code
 from wizq.cloud_files import CLOUD_DIRECTORY, CloudFiles, safe_file
+from wizq.game_install import CLIENT
+from wizq.launch_methods import (
+    ACCOUNT_LAUNCH_METHOD_PREFIX,
+    LAUNCH_METHOD_PATH_PREFIX,
+    delete_launch_method,
+    launch_method,
+    save_launch_method,
+)
 from wizq.paths import Paths
 from wizq.sessions import Sessions
 from wizq.storage import Store, restore_backup
@@ -190,6 +198,38 @@ def test_steam_launch_method_survives_cloud_copy_and_account_deletion(linked_dev
     first.sync()
     assert first.store.accounts() == []
     assert not first.store.query("SELECT key FROM settings WHERE key LIKE 'steam_account:%'")
+
+
+def test_custom_methods_sync_with_account_links_but_paths_stay_per_device(linked_devices, tmp_path):
+    first, second, folder = linked_devices
+    first_path = str(tmp_path / "first installation" / CLIENT)
+    second_path = str(tmp_path / "second installation" / CLIENT)
+    method_id = save_launch_method(first.store, "Steam NA", "us", True, first_path)
+    ident = first.store.save_account(first.vault, "Wizard", "", "", "de", launch_method_id=method_id)
+    path_key = LAUNCH_METHOD_PATH_PREFIX + method_id
+    code = new_code()
+    first.connect(folder, code, create=True)
+    second.connect(folder, code, create=False)
+    (account,) = second.store.accounts()
+    assert account["id"] == ident and account["region"] == "us" and account["steam"]
+    assert account["launch_method_id"] == method_id
+    assert second.store.get(path_key) is None
+    with pytest.raises(ValueError, match="verknüpften Accounts"):
+        delete_launch_method(second.store, method_id)
+
+    save_launch_method(second.store, "Steam US", "us", True, second_path, method_id=method_id)
+    second.sync()
+    first.sync()
+    assert first.store.accounts()[0]["launch_method_name"] == "Steam US"
+    assert first.store.get(path_key) == first_path and second.store.get(path_key) == second_path
+
+    second.store.delete_account(ident)
+    delete_launch_method(second.store, method_id)
+    second.sync()
+    first.sync()
+    assert first.store.accounts() == []
+    assert first.store.get(ACCOUNT_LAUNCH_METHOD_PREFIX + ident) is None
+    assert launch_method(first.store, method_id) is None and first.store.get(path_key) is None
 
 
 def test_profile_arrives_before_files_and_authentication_preserves_existing_file(linked_devices):

@@ -341,9 +341,15 @@ class LaunchPage(QWidget):
             else "Noch nicht gestartet"
         )
         self.detail_name.setText(account["nickname"])
-        method = " · Steam-Direktstart" if account.get("steam") else ""
+        method = account.get("launch_method_name")
+        if account.get("launch_method_id") and not method:
+            method = "Startmethode fehlt"
+        elif not method and account.get("steam"):
+            method = "Steam-Direktstart"
+        if method:
+            group += " · " + method
         self.detail_values.setText(
-            f"{REGIONS.get(account['region'], account['region'])} · {group}{method}\n"
+            f"{REGIONS.get(account['region'], account['region'])} · {group}\n"
             f"Spielzeit: {duration(account['total_seconds'])} · Zuletzt: {used}"
         )
         self.detail_start.setText(

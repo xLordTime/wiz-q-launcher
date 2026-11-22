@@ -59,6 +59,11 @@ class SettingsPage(QWidget):
         self.body.setSpacing(12)
         self.rows, self.controls = [], {}
         self.extra("Launcher & Regionen", self.install_actions(), "Spielordner Installationen suchen Spiel aktualisieren")
+        method_card, method_layout = panel()
+        method_layout.addWidget(label("Startmethoden", name="metric"))
+        method_layout.addWidget(label("Clientdatei und Serverprofil für die Account-Auswahl hinterlegen.", muted=True))
+        method_layout.addWidget(Button("Startmethoden verwalten …", lambda: window.manage_launch_methods()))
+        self.extra("Launcher & Regionen", method_card, "Startmethoden verwalten Clientdatei Serverprofil Steam EU NA")
         for spec in SETTINGS:
             if spec.hidden:
                 continue

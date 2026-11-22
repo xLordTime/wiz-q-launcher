@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 
+from .launch_methods import ACCOUNT_LAUNCH_METHOD_PREFIX, LAUNCH_METHOD_PATH_PREFIX, LAUNCH_METHOD_PREFIX
 from .settings import BY_KEY, REGIONS, set_value
 from .storage import STEAM_ACCOUNT_PREFIX
 
@@ -43,7 +44,7 @@ def portable_setting(key):
     spec = BY_KEY.get(key)
     return (
         key not in LOCAL_SETTINGS
-        and not key.startswith(("region_install_", "cloud_"))
+        and not key.startswith(("region_install_", "cloud_", LAUNCH_METHOD_PATH_PREFIX))
         and not (spec and spec.local)
     )
 
@@ -86,9 +87,11 @@ def apply_profile(store, vault, current, desired, backups, checkpoint):
     # Foreign keys are enforced locally even when the group/account was removed
     # on another device while a different device edited the referencing record.
     desired = dict(desired)
+    account_settings = (STEAM_ACCOUNT_PREFIX, ACCOUNT_LAUNCH_METHOD_PREFIX)
     for key, value in tuple(desired.items()):
-        if key.startswith("settings/" + STEAM_ACCOUNT_PREFIX):
-            ident = key.removeprefix("settings/" + STEAM_ACCOUNT_PREFIX)
+        kind, _, ident = key.partition("/")
+        if kind == "settings" and ident.startswith(account_settings):
+            ident = ident.split(":", 1)[1]
             if "accounts/" + ident not in desired:
                 desired.pop(key)
         if key.startswith("accounts/") and "groups/" + str(value["group_id"]) not in desired:
@@ -152,6 +155,9 @@ def apply_profile(store, vault, current, desired, backups, checkpoint):
                     db.execute("DELETE FROM settings WHERE key=?", (ident,))
                     if ident == "window_mode":
                         db.execute("DELETE FROM settings WHERE key='borderless'")
+                    if ident.startswith(LAUNCH_METHOD_PREFIX):
+                        method_id = ident.removeprefix(LAUNCH_METHOD_PREFIX)
+                        db.execute("DELETE FROM settings WHERE key=?", (LAUNCH_METHOD_PATH_PREFIX + method_id,))
                 elif ident in BY_KEY:
                     set_value(store, ident, value["value"])
                 else:
